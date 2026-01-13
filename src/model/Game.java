@@ -17,8 +17,8 @@ public class Game {
     private Map<Player, StockPile> stockPiles;
     private Map<Player, List<model.Card>> hand;
 
-    private List<model.Card> drawPile;
-    private List<model.BuildingPile> buildingPiles;
+    private List<Card> drawPile;
+    private List<BuildingPile> buildingPiles;
 
     private int currentPlayerIndex;
     private int round;
@@ -40,13 +40,13 @@ public class Game {
         // Initialize 4 building piles (shared by all players)
         this.buildingPiles = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
-            buildingPiles.add(new model.BuildingPile());
+            buildingPiles.add(new BuildingPile());
         }
 
         // Assign cards to players
         int cardsToHandout = players.size() <= 4 ? 30 : 20;
         for (Player player : players){
-            List<model.Card> handOut = new ArrayList<>(drawPile.subList(0, cardsToHandout));
+            List<Card> handOut = new ArrayList<>(drawPile.subList(0, cardsToHandout));
             stockPiles.put(player, new StockPile(handOut));
             hand.put(player, new ArrayList<>());
             drawPile.removeAll(handOut);
@@ -69,7 +69,7 @@ public class Game {
     }
 
     public void handCards(Player player) {
-        List<model.Card> handOut = drawPile.subList(0, 5 - hand.get(player).size());
+        List<Card> handOut = drawPile.subList(0, 5 - hand.get(player).size());
         hand.get(player).addAll(handOut);
         drawPile.removeAll(handOut);
 
