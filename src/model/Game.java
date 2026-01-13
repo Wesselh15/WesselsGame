@@ -31,13 +31,13 @@ public class Game {
         // Assign Players
         this.players = players;
 
-        // Initialize maps
+        // Generate new maps
         this.stockPiles = new HashMap<>();
         this.hand = new HashMap<>();
         this.discardPiles = new HashMap<>();
         this.scores = new HashMap<>();
 
-        // Initialize 4 building piles (shared by all players)
+        // Generates 4 building piles (shared by all players)
         this.buildingPiles = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
             buildingPiles.add(new BuildingPile());
@@ -110,6 +110,7 @@ public class Game {
             }
         }
     }
+
 
     // Getter methods
     public List<model.Card> getHand(Player player) {
