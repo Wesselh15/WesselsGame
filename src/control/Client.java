@@ -5,7 +5,6 @@ import protocol.common.position.*;
 
 import java.io.*;
 import java.net.Socket;
-import java.util.Scanner;
 
 public class Client {
     private String host;
@@ -16,12 +15,14 @@ public class Client {
     private String playerName;
     private boolean connected;
     private boolean inGame;
+    private ClientView view;
 
-    public Client(String host, int port) {
+    public Client(String host, int port, ClientView view) {
         this.host = host;
         this.port = port;
         this.connected = false;
         this.inGame = false;
+        this.view = view;
     }
 
     public boolean connect() {
@@ -36,10 +37,10 @@ public class Client {
             listenerThread.setDaemon(true);
             listenerThread.start();
 
-            System.out.println("Connected to server at " + host + ":" + port);
+            view.showConnected(host, port);
             return true;
         } catch (IOException e) {
-            System.err.println("Could not connect to server: " + e.getMessage());
+            view.showConnectionError(e.getMessage());
             return false;
         }
     }
@@ -58,7 +59,7 @@ public class Client {
                 socket.close();
             }
         } catch (IOException e) {
-            System.err.println("Error disconnecting: " + e.getMessage());
+            view.showDisconnectionError(e.getMessage());
         }
     }
 
@@ -70,7 +71,7 @@ public class Client {
             }
         } catch (IOException e) {
             if (connected) {
-                System.err.println("Connection lost: " + e.getMessage());
+                view.showConnectionLost(e.getMessage());
                 connected = false;
             }
         }
@@ -90,7 +91,7 @@ public class Client {
                     handleWelcome(parts);
                     break;
                 case "QUEUE":
-                    System.out.println("You have been added to the game queue. Waiting for other players...");
+                    view.showAddedToQueue();
                     break;
                 case "START":
                     handleStart(parts);
@@ -117,26 +118,24 @@ public class Client {
                     handleError(parts);
                     break;
                 default:
-                    System.out.println("Unknown server message: " + message);
+                    view.showUnknownMessage(message);
             }
         } catch (Exception e) {
-            System.err.println("Error handling server message: " + e.getMessage());
+            view.showMessageHandlingError(e.getMessage());
         }
     }
 
     private void handleWelcome(String[] parts) {
         if (parts.length >= 2) {
             String name = parts[1];
-            System.out.println("Player '" + name + "' has joined the server");
+            view.showPlayerJoined(name);
         }
     }
 
     private void handleStart(String[] parts) {
         if (parts.length >= 2) {
             String[] players = parts[1].split(protocol.Command.LIST_SEPERATOR);
-            System.out.println("\n=== GAME STARTED ===");
-            System.out.println("Players: " + String.join(", ", players));
-            System.out.println("====================\n");
+            view.showGameStarted(players);
             inGame = true;
         }
     }
@@ -144,19 +143,15 @@ public class Client {
     private void handleTurn(String[] parts) {
         if (parts.length >= 2) {
             String currentPlayer = parts[1];
-            System.out.println("\n--- It's " + currentPlayer + "'s turn ---");
-
-            if (currentPlayer.equals(playerName)) {
-                System.out.println("It's YOUR turn!");
-                printHelp();
-            }
+            boolean isYourTurn = currentPlayer.equals(playerName);
+            view.showTurn(currentPlayer, isYourTurn);
         }
     }
 
     private void handleHand(String[] parts) {
         if (parts.length >= 2) {
             String[] cards = parts[1].split(protocol.Command.LIST_SEPERATOR);
-            System.out.println("Your hand: " + String.join(", ", cards));
+            view.showHand(cards);
         }
     }
 
@@ -164,35 +159,23 @@ public class Client {
         if (parts.length >= 3) {
             String player = parts[1];
             String topCard = parts[2];
-            System.out.println(player + "'s stock pile top card: " + topCard);
+            view.showStockPile(player, topCard);
         }
     }
 
     private void handleTable(String[] parts) {
         if (parts.length >= 3) {
-            System.out.println("\n=== TABLE STATE ===");
-
             // Building piles
             String[] buildingPiles = parts[1].split("\\" + protocol.Command.VALUE_SEPERATOR);
-            System.out.println("Building Piles: " +
-                "1:" + buildingPiles[0] + " " +
-                "2:" + buildingPiles[1] + " " +
-                "3:" + buildingPiles[2] + " " +
-                "4:" + buildingPiles[3]);
 
             // Player tables
             String[] playerTables = parts[2].split(protocol.Command.LIST_SEPERATOR);
-            for (String playerTable : playerTables) {
-                String[] playerParts = playerTable.split("\\" + protocol.Command.VALUE_SEPERATOR);
-                if (playerParts.length >= 5) {
-                    System.out.println(playerParts[0] + "'s discard piles: " +
-                        "1:" + playerParts[1] + " " +
-                        "2:" + playerParts[2] + " " +
-                        "3:" + playerParts[3] + " " +
-                        "4:" + playerParts[4]);
-                }
+            String[][] playerDiscardPiles = new String[playerTables.length][];
+            for (int i = 0; i < playerTables.length; i++) {
+                playerDiscardPiles[i] = playerTables[i].split("\\" + protocol.Command.VALUE_SEPERATOR);
             }
-            System.out.println("==================\n");
+
+            view.showTableState(buildingPiles, playerDiscardPiles);
         }
     }
 
@@ -201,21 +184,23 @@ public class Client {
             String player = parts[1];
             String from = parts[2];
             String to = parts[3];
-            System.out.println(player + " played: " + from + " -> " + to);
+            view.showPlay(player, from, to);
         }
     }
 
     private void handleWinner(String[] parts) {
         if (parts.length >= 2) {
-            System.out.println("\n=== GAME OVER ===");
-            String[] scores = parts[1].split(protocol.Command.LIST_SEPERATOR);
-            for (String score : scores) {
-                String[] scoreParts = score.split("\\" + protocol.Command.VALUE_SEPERATOR);
+            String[] scoreData = parts[1].split(protocol.Command.LIST_SEPERATOR);
+            String[] formattedScores = new String[scoreData.length];
+
+            for (int i = 0; i < scoreData.length; i++) {
+                String[] scoreParts = scoreData[i].split("\\" + protocol.Command.VALUE_SEPERATOR);
                 if (scoreParts.length >= 2) {
-                    System.out.println(scoreParts[0] + ": " + scoreParts[1] + " points");
+                    formattedScores[i] = scoreParts[0] + ": " + scoreParts[1] + " points";
                 }
             }
-            System.out.println("=================\n");
+
+            view.showWinner(formattedScores);
             inGame = false;
         }
     }
@@ -223,26 +208,10 @@ public class Client {
     private void handleError(String[] parts) {
         if (parts.length >= 2) {
             String errorCode = parts[1];
-            System.out.println("ERROR " + errorCode + ": " + getErrorMessage(errorCode));
-        }
-    }
-
-    private String getErrorMessage(String code) {
-        switch (code) {
-            case "001":
-                return "Invalid player name";
-            case "002":
-                return "Name already in use";
-            case "103":
-                return "Player disconnected";
-            case "204":
-                return "Invalid command";
-            case "205":
-                return "Command not allowed";
-            case "206":
-                return "Invalid move";
-            default:
-                return "Unknown error";
+            String errorMessage = (view instanceof TextualClientView)
+                ? ((TextualClientView) view).getErrorMessage(errorCode)
+                : "Error " + errorCode;
+            view.showError(errorCode, errorMessage);
         }
     }
 
@@ -269,10 +238,10 @@ public class Client {
                 protocol.client.Play play = new protocol.client.Play(fromPos, toPos);
                 sendMessage(play.transformToProtocolString());
             } else {
-                System.out.println("Invalid position format");
+                view.showInvalidPositionFormat();
             }
         } catch (Exception e) {
-            System.out.println("Error sending play: " + e.getMessage());
+            view.showPlaySendError(e.getMessage());
         }
     }
 
@@ -338,28 +307,9 @@ public class Client {
         }
     }
 
-    private void printHelp() {
-        System.out.println("\nCommands:");
-        System.out.println("  play <from> <to>  - Make a move (e.g., 'play H.5 B.1' or 'play S D.1')");
-        System.out.println("  hand              - Request your hand");
-        System.out.println("  table             - Request table state");
-        System.out.println("  help              - Show this help");
-        System.out.println("\nPosition format:");
-        System.out.println("  S           - Stock pile");
-        System.out.println("  H.<card>    - Hand (e.g., H.5, H.SB)");
-        System.out.println("  B.<number>  - Building pile 1-4 (e.g., B.1)");
-        System.out.println("  D.<number>  - Discard pile 1-4 (e.g., D.1)");
-        System.out.println();
-    }
-
     public void run() {
-        Scanner scanner = new Scanner(System.in);
-
-        System.out.print("Enter your name: ");
-        String name = scanner.nextLine().trim();
-
-        if (name.isEmpty()) {
-            System.out.println("Invalid name");
+        String name = view.promptPlayerName();
+        if (name == null) {
             return;
         }
 
@@ -372,18 +322,15 @@ public class Client {
             // Ignore
         }
 
-        System.out.print("Enter number of players (2-6): ");
-        try {
-            int numPlayers = Integer.parseInt(scanner.nextLine().trim());
-            sendGame(numPlayers);
-        } catch (NumberFormatException e) {
-            System.out.println("Invalid number");
+        int numPlayers = view.promptNumberOfPlayers();
+        if (numPlayers == -1) {
             return;
         }
+        sendGame(numPlayers);
 
         // Main command loop
         while (connected) {
-            String input = scanner.nextLine().trim();
+            String input = view.readCommand();
 
             if (input.isEmpty()) {
                 continue;
@@ -397,7 +344,7 @@ public class Client {
                     if (parts.length >= 3) {
                         sendPlay(parts[1], parts[2]);
                     } else {
-                        System.out.println("Usage: play <from> <to>");
+                        view.showUsage("play <from> <to>");
                     }
                     break;
                 case "hand":
@@ -407,14 +354,14 @@ public class Client {
                     sendTableRequest();
                     break;
                 case "help":
-                    printHelp();
+                    view.showHelp();
                     break;
                 case "quit":
                 case "exit":
                     disconnect();
                     return;
                 default:
-                    System.out.println("Unknown command. Type 'help' for help.");
+                    view.showUnknownCommand();
             }
         }
     }
@@ -434,7 +381,8 @@ public class Client {
             }
         }
 
-        Client client = new Client(host, port);
+        ClientView view = new TextualClientView();
+        Client client = new Client(host, port, view);
         if (client.connect()) {
             client.run();
         }
