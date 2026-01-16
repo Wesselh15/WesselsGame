@@ -48,12 +48,8 @@ public class Client {
             // Start a background thread to listen for server messages
             // We need a separate thread because listenForMessages() blocks waiting for messages
             // This allows us to send messages while also receiving them
-            Thread listenerThread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    listenForMessages();
-                }
-            });
+            ServerMessageListener listener = new ServerMessageListener();
+            Thread listenerThread = new Thread(listener);
             listenerThread.start();
 
             System.out.println("Connected to server at " + host + ":" + port);
@@ -504,6 +500,17 @@ public class Client {
                 default:
                     System.out.println("Unknown command. Type 'help' for help.");
             }
+        }
+    }
+
+    /**
+     * Inner class that listens for messages from the server in a separate thread.
+     * This is a helper class that runs in the background.
+     */
+    private class ServerMessageListener implements Runnable {
+        @Override
+        public void run() {
+            listenForMessages();
         }
     }
 
