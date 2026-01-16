@@ -46,8 +46,14 @@ public class Client {
             connected = true;
 
             // Start a background thread to listen for server messages
-            Thread listenerThread = new Thread(this::listenForMessages);
-            listenerThread.setDaemon(true);
+            // We need a separate thread because listenForMessages() blocks waiting for messages
+            // This allows us to send messages while also receiving them
+            Thread listenerThread = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    listenForMessages();
+                }
+            });
             listenerThread.start();
 
             System.out.println("Connected to server at " + host + ":" + port);

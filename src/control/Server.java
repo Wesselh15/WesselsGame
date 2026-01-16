@@ -54,8 +54,11 @@ public class Server {
                     System.out.println("New client connected: " + clientSocket.getInetAddress());
 
                     // Create a handler for this client and start it in a new thread
+                    // Each client gets their own thread so we can handle multiple clients at once
+                    // ClientHandler implements Runnable, so we can pass it to Thread
                     ClientHandler handler = new ClientHandler(clientSocket, this);
-                    new Thread(handler).start();
+                    Thread clientThread = new Thread(handler);
+                    clientThread.start();
                 } catch (IOException e) {
                     if (running) {
                         System.err.println("Error accepting client: " + e.getMessage());
