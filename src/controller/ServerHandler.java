@@ -1,16 +1,16 @@
-package Controller;
+package controller;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 
 public class ServerHandler implements Runnable {
     private BufferedReader in;
-    private Controller.Client client;
+    private Client client;
     private boolean running;
 
 
 
-    public ServerHandler(BufferedReader in, Controller.Client client) {
+    public ServerHandler(BufferedReader in, Client client) {
         this.in = in;
         this.client = client;
         this.running = true;

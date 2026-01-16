@@ -1,4 +1,4 @@
-package Controller;
+package controller;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -10,7 +10,7 @@ public class Server {
     private int port;
     private ServerSocket serverSocket;
     private boolean running;
-    private List<Controller.ClientHandler> clients;
+    private List<ClientHandler> clients;
 
     public Server(int port){
         this.port = port;
@@ -40,7 +40,7 @@ public class Server {
                     System.out.println("New client connected: " + clientSocket.getInetAddress());
 
                     // Create a personal handler for this client
-                    Controller.ClientHandler handler = new Controller.ClientHandler(clientSocket, this);
+                    ClientHandler handler = new ClientHandler(clientSocket, this);
 
                     // Add to our list of clients
                     clients.add(handler);
@@ -62,13 +62,13 @@ public class Server {
 
 
     public void broadcast(String message) {
-        for (Controller.ClientHandler client : clients) {
+        for (ClientHandler client : clients) {
             client.sendMessage(message);
         }
     }
 
 
-    public void removeClient(Controller.ClientHandler handler) {
+    public void removeClient(ClientHandler handler) {
         clients.remove(handler);
         System.out.println("Client disconnected. Total clients: " + clients.size());
     }

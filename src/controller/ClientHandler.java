@@ -1,4 +1,4 @@
-package Controller;
+package controller;
 
 import java.io.*;
 import java.net.*;
@@ -15,7 +15,7 @@ public class ClientHandler implements Runnable {
     public ClientHandler(Socket socket, Server server){
         this.socket = socket;
         this.server = server;
-        this.running = running;
+        this.running = true;
     }
 
 
