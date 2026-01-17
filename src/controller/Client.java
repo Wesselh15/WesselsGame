@@ -1,5 +1,8 @@
 package controller;
 
+import protocol.client.Hello;
+import protocol.common.Feature;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -15,6 +18,7 @@ public class Client {
     private PrintWriter out;
     private ServerHandler serverHandler;
     private Scanner scanner;
+    private String playerName;
 
     public Client(String host, int port){
         this.host = host;
@@ -28,6 +32,18 @@ public class Client {
 
         // Creates client
         Client client = new Client(host, port);
+
+        // Ask for player name
+        System.out.print("Enter your player name: ");
+        String name = client.scanner.nextLine().trim();
+
+        if (name.isEmpty()) {
+            System.out.println("Invalid name. Exiting.");
+            return;
+        }
+
+        client.playerName = name;
+
         if (client.connectToServer()){
             client.run();
         }
@@ -42,7 +58,13 @@ public class Client {
             serverHandler = new ServerHandler(in, this);
             Thread serverThread = new Thread(serverHandler);
             serverThread.start();
-            System.out.println("Connected to server with " + host + ": " + port);
+            System.out.println("Connected to server at " + host + ":" + port);
+
+            // Send HELLO command to announce ourselves
+            Hello hello = new Hello(playerName, new Feature[0]);
+            sendMessage(hello.transformToProtocolString());
+            System.out.println("Announced as: " + playerName);
+
             return true;
         } catch (IOException e){
             System.out.println("Could not connect to the server");
@@ -67,7 +89,15 @@ public class Client {
     }
 
     public void run() {
-        System.out.println("Type messages to send to server. Type 'quit' to exit.");
+        System.out.println("\nCommands:");
+        System.out.println("  GAME~<num>     - Request game with <num> players (2-6)");
+        System.out.println("  PLAY~<from>~<to> - Play a card (e.g., PLAY~H.5~B.0)");
+        System.out.println("  TABLE          - Request table state");
+        System.out.println("  HAND           - Request your hand");
+        System.out.println("  END            - End your turn");
+        System.out.println("  quit/exit      - Disconnect from server");
+        System.out.println();
+
         while (true) {
             String input = scanner.nextLine().trim();
             // Checks if user wants to disconnect

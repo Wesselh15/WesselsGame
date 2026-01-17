@@ -15,4 +15,8 @@ public class HandPosition implements Position {
     public String toString(){
         return REP + Command.VALUE_SEPERATOR + (card == null ? "X" : card.toString());
     }
+
+    public Card getCard() {
+        return card;
+    }
 }

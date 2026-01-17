@@ -28,4 +28,8 @@ public class Card {
         if(number == null) return "SB";
         else return "" + number;
     }
+
+    public Integer getNumber() {
+        return number;
+    }
 }
