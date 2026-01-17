@@ -11,12 +11,14 @@ public class ServerHandler implements Runnable {
     private Client client;
     private GameView view;
     private boolean running;
+    private java.util.Map<String, String> playerStockCards;
 
     public ServerHandler(BufferedReader in, Client client, GameView view) {
         this.in = in;
         this.client = client;
         this.view = view;
         this.running = true;
+        this.playerStockCards = new java.util.HashMap<>();
     }
 
     @Override
@@ -69,7 +71,41 @@ public class ServerHandler implements Runnable {
             }
         } else if (command.equals("STOCK")) {
             if (parts.length >= 3) {
+                // Store stock card info for later table display
+                playerStockCards.put(parts[1], parts[2]);
                 view.showStockTopCard(parts[1], parts[2]);
+            }
+        } else if (command.equals("TABLE")) {
+            if (parts.length >= 3) {
+                // Parse TABLE message: TABLE~bp1.bp2.bp3.bp4~player1.dp1.dp2.dp3.dp4,player2...
+                String[] buildingPileData = parts[1].split("\\" + Command.VALUE_SEPERATOR);
+                String[] buildingPiles = new String[4];
+                for (int i = 0; i < 4 && i < buildingPileData.length; i++) {
+                    buildingPiles[i] = buildingPileData[i].equals("X") ? null : buildingPileData[i];
+                }
+
+                // Parse player data
+                String[] playersData = parts[2].split(Command.LIST_SEPERATOR);
+                String[] playerNames = new String[playersData.length];
+                String[][] playerDiscardPiles = new String[playersData.length][4];
+
+                for (int p = 0; p < playersData.length; p++) {
+                    String[] playerInfo = playersData[p].split("\\" + Command.VALUE_SEPERATOR);
+                    if (playerInfo.length >= 5) {
+                        playerNames[p] = playerInfo[0];
+                        for (int d = 0; d < 4; d++) {
+                            playerDiscardPiles[p][d] = playerInfo[d + 1].equals("X") ? null : playerInfo[d + 1];
+                        }
+                    }
+                }
+
+                // Get stock cards from stored data
+                String[] stockCards = new String[playerNames.length];
+                for (int i = 0; i < playerNames.length; i++) {
+                    stockCards[i] = playerStockCards.get(playerNames[i]);
+                }
+
+                view.showTable(buildingPiles, playerDiscardPiles, playerNames, stockCards);
             }
         } else if (command.equals("ERROR")) {
             if (parts.length >= 2) {

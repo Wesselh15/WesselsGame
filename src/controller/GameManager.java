@@ -167,7 +167,7 @@ public class GameManager {
                 sendGameStateToAll();
 
                 // Check if player won
-                if (game.getStockPile(player).isEmpty()) {
+                if (game.hasPlayerWon(player)) {
                     announceWinner(player);
                     return;
                 }
@@ -259,27 +259,15 @@ public class GameManager {
     }
 
     private String createTableMessage() {
-        // Get building piles info
-        String bp1 = null, bp2 = null, bp3 = null, bp4 = null;
-
-        BuildingPile pile0 = game.getBuildingPile(0);
-        if (!pile0.isEmpty()) {
-            bp1 = String.valueOf(pile0.size());
-        }
-
-        BuildingPile pile1 = game.getBuildingPile(1);
-        if (!pile1.isEmpty()) {
-            bp2 = String.valueOf(pile1.size());
-        }
-
-        BuildingPile pile2 = game.getBuildingPile(2);
-        if (!pile2.isEmpty()) {
-            bp3 = String.valueOf(pile2.size());
-        }
-
-        BuildingPile pile3 = game.getBuildingPile(3);
-        if (!pile3.isEmpty()) {
-            bp4 = String.valueOf(pile3.size());
+        // Get building piles info using a loop
+        String[] buildingPileValues = new String[4];
+        for (int i = 0; i < 4; i++) {
+            BuildingPile pile = game.getBuildingPile(i);
+            if (!pile.isEmpty()) {
+                buildingPileValues[i] = String.valueOf(pile.size());
+            } else {
+                buildingPileValues[i] = null;
+            }
         }
 
         // Get each player's discard piles
@@ -290,42 +278,41 @@ public class GameManager {
             Player player = players.get(i);
             String name = player.getName();
 
-            String dp1 = null, dp2 = null, dp3 = null, dp4 = null;
-
-            DiscardPile dpile0 = game.getDiscardPile(player, 0);
-            if (!dpile0.isEmpty()) {
-                Card top = dpile0.topCard();
-                dp1 = cardToString(top);
+            // Use a loop for discard piles
+            String[] discardPileValues = new String[4];
+            for (int j = 0; j < 4; j++) {
+                DiscardPile dpile = game.getDiscardPile(player, j);
+                if (!dpile.isEmpty()) {
+                    Card top = dpile.topCard();
+                    discardPileValues[j] = cardToString(top);
+                } else {
+                    discardPileValues[j] = null;
+                }
             }
 
-            DiscardPile dpile1 = game.getDiscardPile(player, 1);
-            if (!dpile1.isEmpty()) {
-                Card top = dpile1.topCard();
-                dp2 = cardToString(top);
-            }
-
-            DiscardPile dpile2 = game.getDiscardPile(player, 2);
-            if (!dpile2.isEmpty()) {
-                Card top = dpile2.topCard();
-                dp3 = cardToString(top);
-            }
-
-            DiscardPile dpile3 = game.getDiscardPile(player, 3);
-            if (!dpile3.isEmpty()) {
-                Card top = dpile3.topCard();
-                dp4 = cardToString(top);
-            }
-
-            protocol.server.Table.PlayerTable pt = new protocol.server.Table.PlayerTable(name, 0, dp1, dp2, dp3, dp4);
+            protocol.server.Table.PlayerTable pt = new protocol.server.Table.PlayerTable(
+                name, 0,
+                discardPileValues[0],
+                discardPileValues[1],
+                discardPileValues[2],
+                discardPileValues[3]
+            );
             playerTables.add(pt);
         }
 
+        // Convert list to array
         protocol.server.Table.PlayerTable[] ptArray = new protocol.server.Table.PlayerTable[playerTables.size()];
         for (int i = 0; i < playerTables.size(); i++) {
             ptArray[i] = playerTables.get(i);
         }
 
-        protocol.server.Table table = new protocol.server.Table(ptArray, bp1, bp2, bp3, bp4);
+        protocol.server.Table table = new protocol.server.Table(
+            ptArray,
+            buildingPileValues[0],
+            buildingPileValues[1],
+            buildingPileValues[2],
+            buildingPileValues[3]
+        );
         return table.transformToProtocolString();
     }
 
@@ -407,17 +394,6 @@ public class GameManager {
         return result;
     }
 
-    private Card findCardInHand(Player player, int cardNumber) {
-        List<Card> hand = game.getHand(player);
-        for (int i = 0; i < hand.size(); i++) {
-            Card card = hand.get(i);
-            if (!card.isSkipBo() && card.getNumber() == cardNumber) {
-                return card;
-            }
-        }
-        return null;
-    }
-
     private CardAction positionToAction(Player player, Position from, Position to) {
         // From hand to building or discard pile
         if (from instanceof HandPosition && to instanceof NumberedPilePosition) {
@@ -438,7 +414,7 @@ public class GameManager {
                     }
                 }
             } else {
-                actualCard = findCardInHand(player, cardNum);
+                actualCard = game.findCardInHand(player, cardNum);
             }
 
             if (actualCard == null) {
