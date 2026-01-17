@@ -158,6 +158,11 @@ public class GameManager {
                 String playMsg = new protocol.server.Play(from, to, playerName).transformToProtocolString();
                 server.broadcast(playMsg);
 
+                // If stock pile was played from, send new top card
+                if (from instanceof StockPilePosition) {
+                    sendStockTopCard(player);
+                }
+
                 // Send updated game state
                 sendGameStateToAll();
 
