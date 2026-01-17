@@ -68,6 +68,10 @@ public class GameView {
         System.out.println(">>> " + playerName + " played: " + from + " -> " + to);
     }
 
+    public void showStockTopCard(String playerName, String card) {
+        System.out.println(">>> " + playerName + "'s stock pile top card: " + card);
+    }
+
     public void showError(String errorCode) {
         System.out.println(">>> ERROR: " + errorCode);
     }
