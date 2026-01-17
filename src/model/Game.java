@@ -109,9 +109,8 @@ public class Game {
                 }
             }
 
-            // Refill hand during turn if not a discard action
-            // (hand refills immediately when cards are played)
-            if (!(cardAction instanceof model.CardActionHandToDiscardPile)) {
+            // Refill hand ONLY if hand is empty during turn (not after discard)
+            if (hand.get(player).isEmpty() && !(cardAction instanceof model.CardActionHandToDiscardPile)) {
                 handCards(player);
             }
         }
