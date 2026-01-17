@@ -112,6 +112,11 @@ public class GameManager {
         // Send initial game state
         sendGameStateToAll();
 
+        // Send all players' stock pile top cards
+        for (int i = 0; i < players.size(); i++) {
+            sendStockTopCard(players.get(i));
+        }
+
         // Tell everyone whose turn it is
         Player currentPlayer = game.getCurrentPlayer();
         String turnMsg = new Turn(currentPlayer.getName()).transformToProtocolString();
@@ -133,11 +138,17 @@ public class GameManager {
             return;
         }
 
+        // Remember whose turn it was before the move
+        Player playerBeforeMove = game.getCurrentPlayer();
+
         try {
             // Convert position to card action
             CardAction action = positionToAction(player, from, to);
 
             if (action != null) {
+                // Check if this is a discard action (ends turn)
+                boolean isDiscard = (action instanceof CardActionHandToDiscardPile);
+
                 // Let the game execute the move
                 List<CardAction> actions = new ArrayList<>();
                 actions.add(action);
@@ -153,6 +164,18 @@ public class GameManager {
                 // Check if player won
                 if (game.getStockPile(player).isEmpty()) {
                     announceWinner(player);
+                    return;
+                }
+
+                // If turn changed (because of discard), announce new turn
+                Player playerAfterMove = game.getCurrentPlayer();
+                if (playerBeforeMove != playerAfterMove) {
+                    // Send TURN message to all clients
+                    String turnMsg = new Turn(playerAfterMove.getName()).transformToProtocolString();
+                    server.broadcast(turnMsg);
+
+                    // Send stock pile top card for new player
+                    sendStockTopCard(playerAfterMove);
                 }
             } else {
                 ClientHandler client = getClientByName(playerName);
@@ -216,6 +239,17 @@ public class GameManager {
                 String handMsg = new protocol.server.Hand(cardStrings).transformToProtocolString();
                 client.sendMessage(handMsg);
             }
+        }
+    }
+
+    private void sendStockTopCard(Player player) {
+        // Send stock pile top card to all players (it's visible to everyone)
+        StockPile stockPile = game.getStockPile(player);
+        if (!stockPile.isEmpty()) {
+            Card topCard = stockPile.topCard();
+            String cardStr = cardToString(topCard);
+            String stockMsg = new Stock(player.getName(), cardStr).transformToProtocolString();
+            server.broadcast(stockMsg);
         }
     }
 
