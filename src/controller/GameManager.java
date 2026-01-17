@@ -12,20 +12,18 @@ public class GameManager {
     private Game game;
     private Server server;
     private Map<String, ClientHandler> playerClients;
-    private Map<String, Player> players;
-    private boolean gameStarted;
+    private List<String> waitingPlayers;
     private int requiredPlayers;
 
     public GameManager(Server server) {
         this.server = server;
         this.playerClients = new LinkedHashMap<>();
-        this.players = new LinkedHashMap<>();
-        this.gameStarted = false;
+        this.waitingPlayers = new ArrayList<>();
         this.requiredPlayers = 2; // Default to 2 players
     }
 
     public synchronized void addPlayer(String playerName, ClientHandler client) {
-        if (gameStarted) {
+        if (game != null) {
             client.sendMessage(new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString());
             return;
         }
@@ -36,22 +34,21 @@ public class GameManager {
         }
 
         playerClients.put(playerName, client);
-        Player player = new Player(playerName);
-        players.put(playerName, player);
+        waitingPlayers.add(playerName);
 
         // Broadcast WELCOME to all clients
         server.broadcast(new Welcome(playerName, new Feature[0]).transformToProtocolString());
 
-        System.out.println("Player added: " + playerName + " (" + playerClients.size() + "/" + requiredPlayers + ")");
+        System.out.println("Player added: " + playerName + " (" + waitingPlayers.size() + "/" + requiredPlayers + ")");
 
         // Check if we can start the game
-        if (playerClients.size() >= requiredPlayers) {
+        if (waitingPlayers.size() >= requiredPlayers) {
             startGame();
         }
     }
 
     public synchronized void setRequiredPlayers(int count, ClientHandler requestingClient) {
-        if (gameStarted) {
+        if (game != null) {
             requestingClient.sendMessage(new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString());
             return;
         }
@@ -65,25 +62,29 @@ public class GameManager {
         System.out.println("Game will start with " + requiredPlayers + " players");
 
         // Check if we can start immediately
-        if (playerClients.size() >= requiredPlayers) {
+        if (waitingPlayers.size() >= requiredPlayers) {
             startGame();
         }
     }
 
     private void startGame() {
-        if (gameStarted) {
+        if (game != null) {
             return;
         }
 
-        gameStarted = true;
-        System.out.println("Starting game with " + playerClients.size() + " players");
+        System.out.println("Starting game with " + waitingPlayers.size() + " players");
 
-        // Create player list
-        List<Player> playerList = new ArrayList<>(players.values());
+        // Create player list for Game
+        List<Player> playerList = new ArrayList<>();
+        for (String name : waitingPlayers) {
+            playerList.add(new Player(name));
+        }
+
+        // Let Game handle all game logic
         game = new Game(playerList);
 
         // Send START command with player names
-        String[] playerNames = playerClients.keySet().toArray(new String[0]);
+        String[] playerNames = waitingPlayers.toArray(new String[0]);
         server.broadcast(new Start(playerNames).transformToProtocolString());
 
         // Send initial game state to all players
@@ -95,7 +96,7 @@ public class GameManager {
     }
 
     public synchronized void handleMove(String playerName, Position from, Position to) {
-        if (!gameStarted) {
+        if (game == null) {
             ClientHandler client = playerClients.get(playerName);
             if (client != null) {
                 client.sendMessage(new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString());
@@ -103,26 +104,17 @@ public class GameManager {
             return;
         }
 
-        Player player = players.get(playerName);
+        Player player = findPlayer(playerName);
         if (player == null) {
             return;
         }
 
-        // Check if it's this player's turn
-        if (!game.getCurrentPlayer().equals(player)) {
-            ClientHandler client = playerClients.get(playerName);
-            if (client != null) {
-                client.sendMessage(new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString());
-            }
-            return;
-        }
-
+        // Game checks if it's this player's turn
         try {
-            // Convert protocol position to CardAction
             CardAction action = createCardAction(player, from, to);
 
             if (action != null) {
-                // Execute the move
+                // Game validates and executes the move
                 game.doMove(List.of(action), player);
 
                 // Broadcast the move to all players
@@ -155,7 +147,7 @@ public class GameManager {
     }
 
     public synchronized void handleEndTurn(String playerName) {
-        if (!gameStarted) {
+        if (game == null) {
             ClientHandler client = playerClients.get(playerName);
             if (client != null) {
                 client.sendMessage(new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString());
@@ -163,7 +155,7 @@ public class GameManager {
             return;
         }
 
-        Player player = players.get(playerName);
+        Player player = findPlayer(playerName);
         if (player == null || !game.getCurrentPlayer().equals(player)) {
             ClientHandler client = playerClients.get(playerName);
             if (client != null) {
@@ -180,7 +172,7 @@ public class GameManager {
     }
 
     public synchronized void sendTableToPlayer(String playerName) {
-        if (!gameStarted) {
+        if (game == null) {
             return;
         }
 
@@ -192,11 +184,11 @@ public class GameManager {
     }
 
     public synchronized void sendHandToPlayer(String playerName) {
-        if (!gameStarted) {
+        if (game == null) {
             return;
         }
 
-        Player player = players.get(playerName);
+        Player player = findPlayer(playerName);
         ClientHandler client = playerClients.get(playerName);
 
         if (player != null && client != null) {
@@ -212,9 +204,8 @@ public class GameManager {
         server.broadcast(tableMsg);
 
         // Send HAND to each player (their own hand)
-        for (Map.Entry<String, Player> entry : players.entrySet()) {
-            String playerName = entry.getKey();
-            Player player = entry.getValue();
+        for (Player player : game.getPlayers()) {
+            String playerName = player.getName();
             ClientHandler client = playerClients.get(playerName);
 
             if (client != null) {
@@ -260,9 +251,8 @@ public class GameManager {
 
         // Build player tables
         List<protocol.server.Table.PlayerTable> playerTables = new ArrayList<>();
-        for (Map.Entry<String, Player> entry : players.entrySet()) {
-            String playerName = entry.getKey();
-            Player player = entry.getValue();
+        for (Player player : game.getPlayers()) {
+            String playerName = player.getName();
 
             String dp1 = null, dp2 = null, dp3 = null, dp4 = null;
 
@@ -306,6 +296,15 @@ public class GameManager {
         return cardStrings;
     }
 
+    private Player findPlayer(String playerName) {
+        for (Player player : game.getPlayers()) {
+            if (player.getName().equals(playerName)) {
+                return player;
+            }
+        }
+        return null;
+    }
+
     private Card findCardInHand(Player player, int cardNumber) {
         List<Card> hand = game.getHand(player);
         for (Card card : hand) {
@@ -317,7 +316,7 @@ public class GameManager {
     }
 
     private CardAction createCardAction(Player player, Position from, Position to) {
-        // Determine the type of action based on from and to positions
+        // Convert protocol positions to CardAction - Game will validate
         if (from instanceof HandPosition &&
             to instanceof NumberedPilePosition) {
 
@@ -375,7 +374,6 @@ public class GameManager {
     }
 
     private void handleRoundEnd() {
-        // For simplicity, just announce winner when someone empties their stock pile
         Player winner = game.getCurrentPlayer();
 
         List<Winner.Score> scoreList = new ArrayList<>();
@@ -393,13 +391,9 @@ public class GameManager {
     public synchronized void removePlayer(String playerName) {
         playerClients.remove(playerName);
 
-        if (gameStarted) {
+        if (game != null) {
             // Handle player disconnection during game
             server.broadcast(new protocol.server.Error(ErrorCode.PLAYER_DISCONNECTED).transformToProtocolString());
         }
-    }
-
-    public boolean isGameStarted() {
-        return gameStarted;
     }
 }
