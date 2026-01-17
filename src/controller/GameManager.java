@@ -6,63 +6,80 @@ import protocol.common.ErrorCode;
 import protocol.common.Feature;
 import protocol.common.position.*;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
+/**
+ * Manages a single game instance
+ * Handles player connections and converts protocol messages to game actions
+ */
 public class GameManager {
     private Game game;
     private Server server;
-    private Map<String, ClientHandler> playerClients;
-    private List<String> waitingPlayers;
+
+    // Lists to track players and their connections
+    private List<String> playerNames;
+    private List<ClientHandler> playerClients;
+
     private int requiredPlayers;
 
     public GameManager(Server server) {
         this.server = server;
-        this.playerClients = new LinkedHashMap<>();
-        this.waitingPlayers = new ArrayList<>();
-        this.requiredPlayers = 2; // Default to 2 players
+        this.playerNames = new ArrayList<>();
+        this.playerClients = new ArrayList<>();
+        this.requiredPlayers = 2;
     }
 
-    public synchronized void addPlayer(String playerName, ClientHandler client) {
+    public void addPlayer(String playerName, ClientHandler client) {
+        // Check if game already started
         if (game != null) {
-            client.sendMessage(new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString());
+            String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
+            client.sendMessage(errorMsg);
             return;
         }
 
-        if (playerClients.containsKey(playerName)) {
-            client.sendMessage(new protocol.server.Error(ErrorCode.NAME_IN_USE).transformToProtocolString());
-            return;
+        // Check if name already taken
+        for (int i = 0; i < playerNames.size(); i++) {
+            if (playerNames.get(i).equals(playerName)) {
+                String errorMsg = new protocol.server.Error(ErrorCode.NAME_IN_USE).transformToProtocolString();
+                client.sendMessage(errorMsg);
+                return;
+            }
         }
 
-        playerClients.put(playerName, client);
-        waitingPlayers.add(playerName);
+        // Add player to waiting list
+        playerNames.add(playerName);
+        playerClients.add(client);
 
-        // Broadcast WELCOME to all clients
-        server.broadcast(new Welcome(playerName, new Feature[0]).transformToProtocolString());
+        // Tell everyone a new player joined
+        String welcomeMsg = new Welcome(playerName, new Feature[0]).transformToProtocolString();
+        server.broadcast(welcomeMsg);
 
-        System.out.println("Player added: " + playerName + " (" + waitingPlayers.size() + "/" + requiredPlayers + ")");
+        System.out.println("Player added: " + playerName + " (" + playerNames.size() + "/" + requiredPlayers + ")");
 
-        // Check if we can start the game
-        if (waitingPlayers.size() >= requiredPlayers) {
+        // Start game if we have enough players
+        if (playerNames.size() >= requiredPlayers) {
             startGame();
         }
     }
 
-    public synchronized void setRequiredPlayers(int count, ClientHandler requestingClient) {
+    public void setRequiredPlayers(int count, ClientHandler requestingClient) {
         if (game != null) {
-            requestingClient.sendMessage(new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString());
+            String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
+            requestingClient.sendMessage(errorMsg);
             return;
         }
 
         if (count < 2 || count > 6) {
-            requestingClient.sendMessage(new protocol.server.Error(ErrorCode.INVALID_COMMAND).transformToProtocolString());
+            String errorMsg = new protocol.server.Error(ErrorCode.INVALID_COMMAND).transformToProtocolString();
+            requestingClient.sendMessage(errorMsg);
             return;
         }
 
         this.requiredPlayers = count;
         System.out.println("Game will start with " + requiredPlayers + " players");
 
-        // Check if we can start immediately
-        if (waitingPlayers.size() >= requiredPlayers) {
+        if (playerNames.size() >= requiredPlayers) {
             startGame();
         }
     }
@@ -72,161 +89,138 @@ public class GameManager {
             return;
         }
 
-        System.out.println("Starting game with " + waitingPlayers.size() + " players");
+        System.out.println("Starting game with " + playerNames.size() + " players");
 
-        // Create player list for Game
-        List<Player> playerList = new ArrayList<>();
-        for (String name : waitingPlayers) {
-            playerList.add(new Player(name));
+        // Create Player objects for the game
+        List<Player> players = new ArrayList<>();
+        for (int i = 0; i < playerNames.size(); i++) {
+            Player player = new Player(playerNames.get(i));
+            players.add(player);
         }
 
-        // Let Game handle all game logic
-        game = new Game(playerList);
+        // Create the game
+        game = new Game(players);
 
-        // Send START command with player names
-        String[] playerNames = waitingPlayers.toArray(new String[0]);
-        server.broadcast(new Start(playerNames).transformToProtocolString());
+        // Tell everyone the game is starting
+        String[] names = new String[playerNames.size()];
+        for (int i = 0; i < playerNames.size(); i++) {
+            names[i] = playerNames.get(i);
+        }
+        String startMsg = new Start(names).transformToProtocolString();
+        server.broadcast(startMsg);
 
-        // Send initial game state to all players
-        broadcastGameState();
+        // Send initial game state
+        sendGameStateToAll();
 
-        // Announce whose turn it is
+        // Tell everyone whose turn it is
         Player currentPlayer = game.getCurrentPlayer();
-        server.broadcast(new Turn(currentPlayer.getName()).transformToProtocolString());
+        String turnMsg = new Turn(currentPlayer.getName()).transformToProtocolString();
+        server.broadcast(turnMsg);
     }
 
-    public synchronized void handleMove(String playerName, Position from, Position to) {
+    public void handleMove(String playerName, Position from, Position to) {
         if (game == null) {
-            ClientHandler client = playerClients.get(playerName);
+            ClientHandler client = getClientByName(playerName);
             if (client != null) {
-                client.sendMessage(new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString());
+                String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
+                client.sendMessage(errorMsg);
             }
             return;
         }
 
-        Player player = findPlayer(playerName);
+        Player player = getPlayerByName(playerName);
         if (player == null) {
             return;
         }
 
-        // Game checks if it's this player's turn
         try {
-            CardAction action = createCardAction(player, from, to);
+            // Convert position to card action
+            CardAction action = positionToAction(player, from, to);
 
             if (action != null) {
-                // Game validates and executes the move
-                game.doMove(List.of(action), player);
+                // Let the game execute the move
+                List<CardAction> actions = new ArrayList<>();
+                actions.add(action);
+                game.doMove(actions, player);
 
-                // Broadcast the move to all players
-                server.broadcast(new protocol.server.Play(from, to, playerName).transformToProtocolString());
+                // Tell everyone about the move
+                String playMsg = new protocol.server.Play(from, to, playerName).transformToProtocolString();
+                server.broadcast(playMsg);
 
-                // Check if stock pile card changed after move
-                if (from instanceof StockPilePosition) {
-                    broadcastStockUpdate(player);
-                }
+                // Send updated game state
+                sendGameStateToAll();
 
-                // Broadcast updated game state
-                broadcastGameState();
-
-                // Check for winner
+                // Check if player won
                 if (game.getStockPile(player).isEmpty()) {
-                    handleRoundEnd();
+                    announceWinner(player);
                 }
             } else {
-                ClientHandler client = playerClients.get(playerName);
+                ClientHandler client = getClientByName(playerName);
                 if (client != null) {
-                    client.sendMessage(new protocol.server.Error(ErrorCode.INVALID_MOVE).transformToProtocolString());
+                    String errorMsg = new protocol.server.Error(ErrorCode.INVALID_MOVE).transformToProtocolString();
+                    client.sendMessage(errorMsg);
                 }
             }
         } catch (GameException e) {
-            ClientHandler client = playerClients.get(playerName);
+            ClientHandler client = getClientByName(playerName);
             if (client != null) {
-                client.sendMessage(new protocol.server.Error(ErrorCode.INVALID_MOVE).transformToProtocolString());
+                String errorMsg = new protocol.server.Error(ErrorCode.INVALID_MOVE).transformToProtocolString();
+                client.sendMessage(errorMsg);
             }
         }
     }
 
-    public synchronized void handleEndTurn(String playerName) {
-        if (game == null) {
-            ClientHandler client = playerClients.get(playerName);
-            if (client != null) {
-                client.sendMessage(new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString());
-            }
-            return;
-        }
-
-        Player player = findPlayer(playerName);
-        if (player == null || !game.getCurrentPlayer().equals(player)) {
-            ClientHandler client = playerClients.get(playerName);
-            if (client != null) {
-                client.sendMessage(new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString());
-            }
-            return;
-        }
-
-        // Turn is already ended by discarding a card in doMove
-        // Just announce next player's turn
-        Player nextPlayer = game.getCurrentPlayer();
-        server.broadcast(new Turn(nextPlayer.getName()).transformToProtocolString());
-        broadcastGameState();
-    }
-
-    public synchronized void sendTableToPlayer(String playerName) {
+    public void sendTableToPlayer(String playerName) {
         if (game == null) {
             return;
         }
 
-        ClientHandler client = playerClients.get(playerName);
+        ClientHandler client = getClientByName(playerName);
         if (client != null) {
-            String tableMsg = buildTableMessage();
+            String tableMsg = createTableMessage();
             client.sendMessage(tableMsg);
         }
     }
 
-    public synchronized void sendHandToPlayer(String playerName) {
+    public void sendHandToPlayer(String playerName) {
         if (game == null) {
             return;
         }
 
-        Player player = findPlayer(playerName);
-        ClientHandler client = playerClients.get(playerName);
+        Player player = getPlayerByName(playerName);
+        ClientHandler client = getClientByName(playerName);
 
         if (player != null && client != null) {
             List<Card> hand = game.getHand(player);
-            String[] cardStrings = convertToCardStrings(hand);
-            client.sendMessage(new protocol.server.Hand(cardStrings).transformToProtocolString());
+            String[] cardStrings = cardsToStrings(hand);
+            String handMsg = new protocol.server.Hand(cardStrings).transformToProtocolString();
+            client.sendMessage(handMsg);
         }
     }
 
-    private void broadcastGameState() {
-        // Send TABLE to all players
-        String tableMsg = buildTableMessage();
+    private void sendGameStateToAll() {
+        // Send table to everyone
+        String tableMsg = createTableMessage();
         server.broadcast(tableMsg);
 
-        // Send HAND to each player (their own hand)
-        for (Player player : game.getPlayers()) {
-            String playerName = player.getName();
-            ClientHandler client = playerClients.get(playerName);
+        // Send each player their hand
+        List<Player> players = game.getPlayers();
+        for (int i = 0; i < players.size(); i++) {
+            Player player = players.get(i);
+            String name = player.getName();
+            ClientHandler client = getClientByName(name);
 
             if (client != null) {
                 List<Card> hand = game.getHand(player);
-                String[] cardStrings = convertToCardStrings(hand);
-                client.sendMessage(new protocol.server.Hand(cardStrings).transformToProtocolString());
+                String[] cardStrings = cardsToStrings(hand);
+                String handMsg = new protocol.server.Hand(cardStrings).transformToProtocolString();
+                client.sendMessage(handMsg);
             }
         }
     }
 
-    private void broadcastStockUpdate(Player player) {
-        StockPile stockPile = game.getStockPile(player);
-        if (!stockPile.isEmpty()) {
-            Card topCard = stockPile.topCard();
-            String cardStr = topCard.isSkipBo() ? "SB" : String.valueOf(topCard.getNumber());
-            server.broadcast(new Stock(player.getName(), cardStr).transformToProtocolString());
-        }
-    }
-
-    private String buildTableMessage() {
-        // Build building piles strings
+    private String createTableMessage() {
+        // Get building piles info
         String bp1 = null, bp2 = null, bp3 = null, bp4 = null;
 
         BuildingPile pile0 = game.getBuildingPile(0);
@@ -249,65 +243,135 @@ public class GameManager {
             bp4 = String.valueOf(pile3.size());
         }
 
-        // Build player tables
+        // Get each player's discard piles
         List<protocol.server.Table.PlayerTable> playerTables = new ArrayList<>();
-        for (Player player : game.getPlayers()) {
-            String playerName = player.getName();
+        List<Player> players = game.getPlayers();
+
+        for (int i = 0; i < players.size(); i++) {
+            Player player = players.get(i);
+            String name = player.getName();
 
             String dp1 = null, dp2 = null, dp3 = null, dp4 = null;
 
             DiscardPile dpile0 = game.getDiscardPile(player, 0);
             if (!dpile0.isEmpty()) {
                 Card top = dpile0.topCard();
-                dp1 = top.isSkipBo() ? "SB" : String.valueOf(top.getNumber());
+                dp1 = cardToString(top);
             }
 
             DiscardPile dpile1 = game.getDiscardPile(player, 1);
             if (!dpile1.isEmpty()) {
                 Card top = dpile1.topCard();
-                dp2 = top.isSkipBo() ? "SB" : String.valueOf(top.getNumber());
+                dp2 = cardToString(top);
             }
 
             DiscardPile dpile2 = game.getDiscardPile(player, 2);
             if (!dpile2.isEmpty()) {
                 Card top = dpile2.topCard();
-                dp3 = top.isSkipBo() ? "SB" : String.valueOf(top.getNumber());
+                dp3 = cardToString(top);
             }
 
             DiscardPile dpile3 = game.getDiscardPile(player, 3);
             if (!dpile3.isEmpty()) {
                 Card top = dpile3.topCard();
-                dp4 = top.isSkipBo() ? "SB" : String.valueOf(top.getNumber());
+                dp4 = cardToString(top);
             }
 
-            playerTables.add(new protocol.server.Table.PlayerTable(playerName, 0, dp1, dp2, dp3, dp4));
+            protocol.server.Table.PlayerTable pt = new protocol.server.Table.PlayerTable(name, 0, dp1, dp2, dp3, dp4);
+            playerTables.add(pt);
         }
 
-        protocol.server.Table.PlayerTable[] playerTableArray = playerTables.toArray(new protocol.server.Table.PlayerTable[0]);
-        return new protocol.server.Table(playerTableArray, bp1, bp2, bp3, bp4).transformToProtocolString();
-    }
-
-    private String[] convertToCardStrings(List<Card> cards) {
-        String[] cardStrings = new String[cards.size()];
-        for (int i = 0; i < cards.size(); i++) {
-            Card card = cards.get(i);
-            cardStrings[i] = card.isSkipBo() ? "SB" : String.valueOf(card.getNumber());
+        protocol.server.Table.PlayerTable[] ptArray = new protocol.server.Table.PlayerTable[playerTables.size()];
+        for (int i = 0; i < playerTables.size(); i++) {
+            ptArray[i] = playerTables.get(i);
         }
-        return cardStrings;
+
+        protocol.server.Table table = new protocol.server.Table(ptArray, bp1, bp2, bp3, bp4);
+        return table.transformToProtocolString();
     }
 
-    private Player findPlayer(String playerName) {
-        for (Player player : game.getPlayers()) {
-            if (player.getName().equals(playerName)) {
-                return player;
+    private void announceWinner(Player winner) {
+        List<Winner.Score> scoreList = new ArrayList<>();
+        List<Player> players = game.getPlayers();
+
+        for (int i = 0; i < players.size(); i++) {
+            Player player = players.get(i);
+            int score = player.equals(winner) ? 100 : 0;
+            Winner.Score s = new Winner.Score(player.getName(), score);
+            scoreList.add(s);
+        }
+
+        Winner.Score[] scores = new Winner.Score[scoreList.size()];
+        for (int i = 0; i < scoreList.size(); i++) {
+            scores[i] = scoreList.get(i);
+        }
+
+        String winnerMsg = new Winner(scores).transformToProtocolString();
+        server.broadcast(winnerMsg);
+        System.out.println("Game ended. Winner: " + winner.getName());
+    }
+
+    public void removePlayer(String playerName) {
+        // Find and remove player
+        for (int i = 0; i < playerNames.size(); i++) {
+            if (playerNames.get(i).equals(playerName)) {
+                playerNames.remove(i);
+                playerClients.remove(i);
+                break;
+            }
+        }
+
+        if (game != null) {
+            String errorMsg = new protocol.server.Error(ErrorCode.PLAYER_DISCONNECTED).transformToProtocolString();
+            server.broadcast(errorMsg);
+        }
+    }
+
+    // Helper methods
+
+    private Player getPlayerByName(String name) {
+        if (game == null) {
+            return null;
+        }
+
+        List<Player> players = game.getPlayers();
+        for (int i = 0; i < players.size(); i++) {
+            if (players.get(i).getName().equals(name)) {
+                return players.get(i);
             }
         }
         return null;
     }
 
+    private ClientHandler getClientByName(String name) {
+        for (int i = 0; i < playerNames.size(); i++) {
+            if (playerNames.get(i).equals(name)) {
+                return playerClients.get(i);
+            }
+        }
+        return null;
+    }
+
+    private String cardToString(Card card) {
+        if (card.isSkipBo()) {
+            return "SB";
+        } else {
+            return String.valueOf(card.getNumber());
+        }
+    }
+
+    private String[] cardsToStrings(List<Card> cards) {
+        String[] result = new String[cards.size()];
+        for (int i = 0; i < cards.size(); i++) {
+            result[i] = cardToString(cards.get(i));
+        }
+        return result;
+    }
+
     private Card findCardInHand(Player player, int cardNumber) {
         List<Card> hand = game.getHand(player);
-        for (Card card : hand) {
+        for (int i = 0; i < hand.size(); i++) {
+            Card card = hand.get(i);
             if (!card.isSkipBo() && card.getNumber() == cardNumber) {
                 return card;
             }
@@ -315,15 +379,12 @@ public class GameManager {
         return null;
     }
 
-    private CardAction createCardAction(Player player, Position from, Position to) {
-        // Convert protocol positions to CardAction - Game will validate
-        if (from instanceof HandPosition &&
-            to instanceof NumberedPilePosition) {
-
+    private CardAction positionToAction(Player player, Position from, Position to) {
+        // From hand to building or discard pile
+        if (from instanceof HandPosition && to instanceof NumberedPilePosition) {
             HandPosition handPos = (HandPosition) from;
             NumberedPilePosition pilePos = (NumberedPilePosition) to;
 
-            // Find the actual card in the player's hand
             Integer cardNum = handPos.getCard().getNumber();
             Card actualCard;
 
@@ -331,9 +392,9 @@ public class GameManager {
                 // Skip-Bo card
                 List<Card> hand = game.getHand(player);
                 actualCard = null;
-                for (Card c : hand) {
-                    if (c.isSkipBo()) {
-                        actualCard = c;
+                for (int i = 0; i < hand.size(); i++) {
+                    if (hand.get(i).isSkipBo()) {
+                        actualCard = hand.get(i);
                         break;
                     }
                 }
@@ -345,23 +406,23 @@ public class GameManager {
                 return null;
             }
 
-            // Check if it's a building pile (B) or discard pile (D)
             if (pilePos.getType().equals("B")) {
                 return new CardActionHandToBuildingPile(actualCard, pilePos.getIndex());
             } else if (pilePos.getType().equals("D")) {
                 return new CardActionHandToDiscardPile(actualCard, pilePos.getIndex());
             }
-        } else if (from instanceof StockPilePosition &&
-                   to instanceof NumberedPilePosition) {
+        }
 
+        // From stock to building pile
+        if (from instanceof StockPilePosition && to instanceof NumberedPilePosition) {
             NumberedPilePosition pilePos = (NumberedPilePosition) to;
-
             if (pilePos.getType().equals("B")) {
                 return new CardActionStockPileToBuildingPile(pilePos.getIndex());
             }
-        } else if (from instanceof NumberedPilePosition &&
-                   to instanceof NumberedPilePosition) {
+        }
 
+        // From discard to building pile
+        if (from instanceof NumberedPilePosition && to instanceof NumberedPilePosition) {
             NumberedPilePosition fromPile = (NumberedPilePosition) from;
             NumberedPilePosition toPile = (NumberedPilePosition) to;
 
@@ -371,29 +432,5 @@ public class GameManager {
         }
 
         return null;
-    }
-
-    private void handleRoundEnd() {
-        Player winner = game.getCurrentPlayer();
-
-        List<Winner.Score> scoreList = new ArrayList<>();
-        for (Player player : game.getPlayers()) {
-            // Simple scoring: winner gets 100 points, others get 0
-            int score = player.equals(winner) ? 100 : 0;
-            scoreList.add(new Winner.Score(player.getName(), score));
-        }
-
-        Winner.Score[] scores = scoreList.toArray(new Winner.Score[0]);
-        server.broadcast(new Winner(scores).transformToProtocolString());
-        System.out.println("Game ended. Winner: " + winner.getName());
-    }
-
-    public synchronized void removePlayer(String playerName) {
-        playerClients.remove(playerName);
-
-        if (game != null) {
-            // Handle player disconnection during game
-            server.broadcast(new protocol.server.Error(ErrorCode.PLAYER_DISCONNECTED).transformToProtocolString());
-        }
     }
 }

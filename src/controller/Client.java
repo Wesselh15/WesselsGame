@@ -2,6 +2,7 @@ package controller;
 
 import protocol.client.Hello;
 import protocol.common.Feature;
+import view.GameView;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -19,19 +20,21 @@ public class Client {
     private ServerHandler serverHandler;
     private Scanner scanner;
     private String playerName;
+    private GameView view;
 
     public Client(String host, int port){
         this.host = host;
         this.port = port;
         this.scanner = new Scanner(System.in);
+        this.view = new GameView();
     }
 
     public static void main(String[] args){
         String host = "localhost";
         int port = 5555;
 
-        // Creates client
         Client client = new Client(host, port);
+        client.view.showWelcome();
 
         // Ask for player name
         System.out.print("Enter your player name: ");
@@ -49,18 +52,17 @@ public class Client {
         }
     }
 
-
     public boolean connectToServer(){
         try {
             socket = new Socket(host, port);
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             out = new PrintWriter(socket.getOutputStream(), true);
-            serverHandler = new ServerHandler(in, this);
+            serverHandler = new ServerHandler(in, this, view);
             Thread serverThread = new Thread(serverHandler);
             serverThread.start();
             System.out.println("Connected to server at " + host + ":" + port);
 
-            // Send HELLO command to announce ourselves
+            // Send HELLO command
             Hello hello = new Hello(playerName, new Feature[0]);
             sendMessage(hello.transformToProtocolString());
             System.out.println("Announced as: " + playerName);
@@ -74,11 +76,9 @@ public class Client {
 
     public void disconnectFromServer() {
         try {
-            // Stop the server handler
             if (serverHandler != null) {
                 serverHandler.stop();
             }
-            // Close all connections
             if (in != null) in.close();
             if (out != null) out.close();
             if (socket != null && !socket.isClosed()) socket.close();
@@ -89,23 +89,16 @@ public class Client {
     }
 
     public void run() {
-        System.out.println("\nCommands:");
-        System.out.println("  GAME~<num>     - Request game with <num> players (2-6)");
-        System.out.println("  PLAY~<from>~<to> - Play a card (e.g., PLAY~H.5~B.0)");
-        System.out.println("  TABLE          - Request table state");
-        System.out.println("  HAND           - Request your hand");
-        System.out.println("  END            - End your turn");
-        System.out.println("  quit/exit      - Disconnect from server");
-        System.out.println();
+        view.showCommands();
 
         while (true) {
             String input = scanner.nextLine().trim();
-            // Checks if user wants to disconnect
+
             if (input.equalsIgnoreCase("quit") || input.equalsIgnoreCase("exit")) {
                 disconnectFromServer();
                 break;
             }
-            // Sends the message to the server
+
             if (!input.isEmpty()) {
                 sendMessage(input);
             }
@@ -117,6 +110,4 @@ public class Client {
             out.println(message);
         }
     }
-
 }
-
