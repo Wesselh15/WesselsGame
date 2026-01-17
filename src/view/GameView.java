@@ -48,19 +48,22 @@ public class GameView {
     }
 
     public void showHand(String[] cards) {
-        System.out.println("\n--- YOUR HAND ---");
+        System.out.println("\n┌──────────────────────────────────────────┐");
+        System.out.println("│           YOUR HAND                      │");
+        System.out.println("├──────────────────────────────────────────┤");
         if (cards.length == 0) {
-            System.out.println("  (empty)");
+            System.out.println("│  (empty)                                 │");
         } else {
-            System.out.print("  Cards: ");
+            System.out.print("│  ");
             for (int i = 0; i < cards.length; i++) {
-                System.out.print(cards[i]);
-                if (i < cards.length - 1) {
-                    System.out.print(", ");
-                }
+                System.out.print("[H." + i + ":" + formatCardValue(cards[i]) + "] ");
             }
-            System.out.println();
+            for (int i = cards.length; i < 5; i++) {
+                System.out.print("[H." + i + ": --] ");
+            }
+            System.out.println("  │");
         }
+        System.out.println("└──────────────────────────────────────────┘");
         System.out.println();
     }
 
@@ -86,5 +89,72 @@ public class GameView {
 
     public void showMessage(String message) {
         System.out.println(">>> " + message);
+    }
+
+    public void showTable(String[] buildingPiles, String[][] playerDiscardPiles, String[] playerNames, String[] stockTopCards) {
+        System.out.println("\n");
+        System.out.println("╔═════════════════════════════════════════════════════════╗");
+        System.out.println("║              SKIP-BO GAME TABLE                         ║");
+        System.out.println("╠═════════════════════════════════════════════════════════╣");
+        System.out.println("║                BUILDING PILES (Center)                  ║");
+        System.out.println("║                                                         ║");
+
+        // Show building piles
+        System.out.print("║  ");
+        for (int i = 0; i < 4; i++) {
+            String value = buildingPiles[i] != null ? buildingPiles[i] : "--";
+            System.out.print("[B" + i + ":" + formatCardValue(value) + "] ");
+        }
+        System.out.println("                            ║");
+        System.out.println("╚═════════════════════════════════════════════════════════╝");
+
+        // Show each player's area
+        for (int p = 0; p < playerNames.length; p++) {
+            System.out.println();
+            System.out.println("┌─────────────────────────────────────────────────────────┐");
+            System.out.println("│  Player: " + formatPlayerName(playerNames[p]) + "                                      │");
+
+            // Stock pile
+            String stockCard = stockTopCards != null && stockTopCards.length > p && stockTopCards[p] != null
+                ? stockTopCards[p] : "--";
+            System.out.println("│  Stock Pile: [" + formatCardValue(stockCard) + "]                                      │");
+
+            // Discard piles
+            System.out.print("│  Discard: ");
+            if (playerDiscardPiles != null && playerDiscardPiles.length > p) {
+                for (int i = 0; i < 4; i++) {
+                    String value = playerDiscardPiles[p][i] != null ? playerDiscardPiles[p][i] : "--";
+                    System.out.print("[D" + i + ":" + formatCardValue(value) + "] ");
+                }
+            } else {
+                System.out.print("[D0:--] [D1:--] [D2:--] [D3:--] ");
+            }
+            System.out.println("              │");
+            System.out.println("└─────────────────────────────────────────────────────────┘");
+        }
+        System.out.println();
+    }
+
+    private String formatCardValue(String value) {
+        if (value == null || value.equals("--")) {
+            return "  --";
+        }
+        if (value.equals("SB")) {
+            return "  SB";
+        }
+        if (value.length() == 1) {
+            return "   " + value;
+        }
+        if (value.length() == 2) {
+            return "  " + value;
+        }
+        return value;
+    }
+
+    private String formatPlayerName(String name) {
+        if (name.length() > 20) {
+            return name.substring(0, 20);
+        }
+        return name;
     }
 }

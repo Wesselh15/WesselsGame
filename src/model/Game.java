@@ -159,4 +159,30 @@ public class Game {
     public Map<Player, Integer> getScores() {
         return scores;
     }
+
+    // Game logic methods
+
+    public boolean isPlayersTurn(Player player) {
+        return players.get(currentPlayerIndex) == player;
+    }
+
+    public boolean hasPlayerWon(Player player) {
+        StockPile stockPile = stockPiles.get(player);
+        return stockPile != null && stockPile.isEmpty();
+    }
+
+    public Card findCardInHand(Player player, int cardNumber) {
+        List<Card> playerHand = hand.get(player);
+        if (playerHand == null) {
+            return null;
+        }
+
+        for (int i = 0; i < playerHand.size(); i++) {
+            Card card = playerHand.get(i);
+            if (!card.isSkipBo() && card.getNumber() == cardNumber) {
+                return card;
+            }
+        }
+        return null;
+    }
 }
