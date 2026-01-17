@@ -69,10 +69,20 @@ public class Game {
     }
 
     public void handCards(Player player) {
-        List<Card> handOut = drawPile.subList(0, 5 - hand.get(player).size());
-        hand.get(player).addAll(handOut);
-        drawPile.removeAll(handOut);
+        // Calculate how many cards to draw
+        int cardsToDraw = 5 - hand.get(player).size();
 
+        // Don't draw more than available in draw pile
+        if (cardsToDraw > drawPile.size()) {
+            cardsToDraw = drawPile.size();
+        }
+
+        // Only draw if there are cards available
+        if (cardsToDraw > 0 && !drawPile.isEmpty()) {
+            List<Card> handOut = new ArrayList<>(drawPile.subList(0, cardsToDraw));
+            hand.get(player).addAll(handOut);
+            drawPile.removeAll(handOut);
+        }
     }
 
     public void doMove(List<CardAction> cardActions, Player player) throws GameException {
@@ -97,6 +107,12 @@ public class Game {
                 if (pile.isFull()) {
                     pile.clear();
                 }
+            }
+
+            // Refill hand during turn if not a discard action
+            // (hand refills immediately when cards are played)
+            if (!(cardAction instanceof model.CardActionHandToDiscardPile)) {
+                handCards(player);
             }
         }
 
