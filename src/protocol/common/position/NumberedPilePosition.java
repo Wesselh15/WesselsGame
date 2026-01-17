@@ -16,6 +16,14 @@ public class NumberedPilePosition implements Position {
         return pile + Command.VALUE_SEPERATOR + number;
     }
 
+    public String getType() {
+        return pile.toString();
+    }
+
+    public int getIndex() {
+        return number;
+    }
+
     public enum Pile {
         BUILDING_PILE("B"),
         DISCARD_PILE("D");

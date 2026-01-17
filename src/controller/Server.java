@@ -11,11 +11,13 @@ public class Server {
     private ServerSocket serverSocket;
     private boolean running;
     private List<ClientHandler> clients;
+    private GameManager gameManager;
 
     public Server(int port){
         this.port = port;
         this.running = false;
         this.clients = new ArrayList<>();
+        this.gameManager = new GameManager(this);
     }
 
     public static void main(String[] args) {
@@ -71,6 +73,10 @@ public class Server {
     public void removeClient(ClientHandler handler) {
         clients.remove(handler);
         System.out.println("Client disconnected. Total clients: " + clients.size());
+    }
+
+    public GameManager getGameManager() {
+        return gameManager;
     }
 
 }
