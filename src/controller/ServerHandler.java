@@ -67,6 +67,10 @@ public class ServerHandler implements Runnable {
             if (parts.length >= 4) {
                 view.showMove(parts[1], parts[2], parts[3]);
             }
+        } else if (command.equals("STOCK")) {
+            if (parts.length >= 3) {
+                view.showStockTopCard(parts[1], parts[2]);
+            }
         } else if (command.equals("ERROR")) {
             if (parts.length >= 2) {
                 view.showError(parts[1]);
