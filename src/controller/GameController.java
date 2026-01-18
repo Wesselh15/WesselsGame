@@ -12,23 +12,23 @@ import java.util.Map;
 import static model.GameConstants.*;
 
 /**
- * GameController vertaalt protocol berichten naar game acties
- * Dit maakt de code simpeler:
- * - GameManager = lobby management (spelers toevoegen, game starten)
- * - GameController = game logica (moves handlen, scores bijhouden)
+ * GameController translates protocol messages to game actions
+ * This makes the code simpler:
+ * - GameManager = lobby management (add players, start game)
+ * - GameController = game logic (handle moves, track scores)
  */
 public class GameController {
     private Game game;
     private Server server;
-    private List<String> playerNames;      // Namen van alle spelers
-    private List<ClientHandler> playerClients;  // Connecties naar alle spelers
+    private List<String> playerNames;      // Names of all players
+    private List<ClientHandler> playerClients;  // Connections to all players
 
     /**
-     * Maakt een nieuwe GameController
-     * @param game Het game object
-     * @param server De server voor broadcasting
-     * @param playerNames De namen van alle spelers
-     * @param playerClients De client handlers van alle spelers
+     * Creates a new GameController
+     * @param game The game object
+     * @param server The server for broadcasting
+     * @param playerNames The names of all players
+     * @param playerClients The client handlers of all players
      */
     public GameController(Game game, Server server,
                          List<String> playerNames,
@@ -40,8 +40,8 @@ public class GameController {
     }
 
     /**
-     * Verwerkt een move van een speler (PLAY command)
-     * Controleert of de move geldig is en voert hem uit
+     * Processes a move from a player (PLAY command)
+     * Checks if the move is valid and executes it
      */
     public void handleMove(String playerName, Position from, Position to) {
         Player player = getPlayerByName(playerName);
@@ -50,28 +50,28 @@ public class GameController {
         }
 
         try {
-            // Converteer position naar card action
+            // Convert position to card action
             CardAction action = positionToAction(player, from, to);
 
             if (action != null) {
-                // Voer de move uit in het spel
+                // Execute the move in the game
                 List<CardAction> actions = new ArrayList<>();
                 actions.add(action);
                 game.doMove(actions, player);
 
-                // Broadcast de move naar alle spelers
+                // Broadcast the move to all players
                 String playMsg = new protocol.server.Play(from, to, playerName).transformToProtocolString();
                 server.broadcast(playMsg);
 
-                // Als van stock pile gespeeld: stuur nieuwe top card
+                // If played from stock pile: send new top card
                 if (from instanceof StockPilePosition) {
                     sendStockTopCard(player);
                 }
 
-                // Stuur updated game state
+                // Send updated game state
                 sendGameStateToAll();
 
-                // Check of speler deze RONDE heeft gewonnen
+                // Check if player won this ROUND
                 if (game.hasPlayerWon(player)) {
                     handleRoundWin(player);
                 }
@@ -84,32 +84,32 @@ public class GameController {
     }
 
     /**
-     * Verwerkt als een speler een ronde wint
-     * Check of het hele spel nu ook afgelopen is (>= 500 punten)
+     * Processes when a player wins a round
+     * Checks if the entire game is now over (>= 500 points)
      */
     private void handleRoundWin(Player player) {
-        // Sluit ronde af en bereken scores
+        // Finish round and calculate scores
         RoundResult result = game.finishRound(player);
 
-        // Kondig ronde winnaar aan
+        // Announce round winner
         announceRoundWinner(result);
 
         if (result.gameOver) {
-            // Spel is helemaal afgelopen! Overall winnaar heeft >= 500 punten
+            // Game is completely over! Overall winner has >= 500 points
             announceOverallWinner(result.overallWinner);
         } else {
-            // Start nieuwe ronde (scores blijven behouden)
+            // Start new round (scores are preserved)
             game.startNewRound();
             announceNewRound();
         }
     }
 
     /**
-     * Kondigt de winnaar van een ronde aan (niet het hele spel!)
-     * Stuurt WINNER message met alle scores
+     * Announces the winner of a round (not the entire game!)
+     * Sends WINNER message with all scores
      */
     private void announceRoundWinner(RoundResult result) {
-        // Maak score lijst voor protocol
+        // Create score list for protocol
         List<Winner.Score> scores = new ArrayList<>();
         for (Player p : game.getPlayers()) {
             int score = result.allScores.get(p);
@@ -120,31 +120,31 @@ public class GameController {
         String msg = new Winner(scoreArray).transformToProtocolString();
         server.broadcast(msg);
 
-        System.out.println("Ronde " + game.getRoundNumber() + " winnaar: " +
+        System.out.println("Round " + game.getRoundNumber() + " winner: " +
                            result.roundWinner.getName() +
-                           " (+" + result.pointsScored + " punten)");
+                           " (+" + result.pointsScored + " points)");
     }
 
     /**
-     * Kondigt de overall winnaar aan (>= 500 punten)
-     * Dit is het EINDE van het hele spel!
+     * Announces the overall winner (>= 500 points)
+     * This is the END of the entire game!
      */
     private void announceOverallWinner(Player winner) {
         System.out.println("======================");
-        System.out.println("SPEL AFGELOPEN!");
-        System.out.println("Overall winnaar: " + winner.getName());
+        System.out.println("GAME OVER!");
+        System.out.println("Overall winner: " + winner.getName());
         System.out.println("======================");
 
-        // WINNER bericht is al verstuurd door announceRoundWinner
-        // Hier hoeven we alleen te loggen
+        // WINNER message was already sent by announceRoundWinner
+        // Here we only need to log
     }
 
     /**
-     * Kondigt een nieuwe ronde aan
-     * Stuurt ROUND bericht en nieuwe game state
+     * Announces a new round
+     * Sends ROUND message and new game state
      */
     private void announceNewRound() {
-        // Maak score lijst voor ROUND bericht
+        // Create score list for ROUND message
         List<Round.Score> scores = new ArrayList<>();
         Map<Player, Integer> allScores = game.getAllScores();
         for (Player p : game.getPlayers()) {
@@ -156,19 +156,19 @@ public class GameController {
         String msg = new Round(scoreArray).transformToProtocolString();
         server.broadcast(msg);
 
-        // Stuur nieuwe game state
+        // Send new game state
         sendGameStateToAll();
 
-        // Kondig aan wie er aan de beurt is
+        // Announce whose turn it is
         Player currentPlayer = game.getCurrentPlayer();
         String turnMsg = new Turn(currentPlayer.getName()).transformToProtocolString();
         server.broadcast(turnMsg);
 
-        System.out.println("Nieuwe ronde gestart! Ronde " + game.getRoundNumber());
+        System.out.println("New round started! Round " + game.getRoundNumber());
     }
 
     /**
-     * Beëindigt de beurt van een speler (END command)
+     * Ends a player's turn (END command)
      */
     public void endTurn(String playerName) {
         Player player = getPlayerByName(playerName);
@@ -176,7 +176,7 @@ public class GameController {
             return;
         }
 
-        // Check of het deze speler's beurt is
+        // Check if it's this player's turn
         Player currentPlayer = game.getCurrentPlayer();
         if (currentPlayer != player) {
             sendErrorToPlayer(playerName, ErrorCode.COMMAND_NOT_ALLOWED);
@@ -184,20 +184,20 @@ public class GameController {
         }
 
         try {
-            // Beëindig beurt (gaat naar volgende speler)
+            // End turn (goes to next player)
             game.endTurn();
 
-            // Haal nieuwe current player op
+            // Get new current player
             Player nextPlayer = game.getCurrentPlayer();
 
-            // Broadcast TURN bericht
+            // Broadcast TURN message
             String turnMsg = new Turn(nextPlayer.getName()).transformToProtocolString();
             server.broadcast(turnMsg);
 
-            // Stuur HAND naar nieuwe speler
+            // Send HAND to new player
             sendHandToPlayer(nextPlayer.getName());
 
-            // Stuur stock pile top card voor nieuwe speler
+            // Send stock pile top card for new player
             sendStockTopCard(nextPlayer);
 
         } catch (GameException e) {
@@ -206,7 +206,7 @@ public class GameController {
     }
 
     /**
-     * Stuurt TABLE bericht naar een specifieke speler
+     * Sends TABLE message to a specific player
      */
     public void sendTableToPlayer(String playerName) {
         ClientHandler client = getClientByName(playerName);
@@ -217,7 +217,7 @@ public class GameController {
     }
 
     /**
-     * Stuurt HAND bericht naar een specifieke speler
+     * Sends HAND message to a specific player
      */
     public void sendHandToPlayer(String playerName) {
         Player player = getPlayerByName(playerName);
@@ -232,16 +232,16 @@ public class GameController {
     }
 
     /**
-     * Stuurt game state naar alle spelers
-     * - TABLE naar iedereen
-     * - HAND naar elke speler individueel
+     * Sends game state to all players
+     * - TABLE to everyone
+     * - HAND to each player individually
      */
     public void sendGameStateToAll() {
-        // Stuur table naar iedereen
+        // Send table to everyone
         String tableMsg = createTableMessage();
         server.broadcast(tableMsg);
 
-        // Stuur elke speler zijn hand
+        // Send each player their hand
         List<Player> players = game.getPlayers();
         for (Player player : players) {
             String name = player.getName();
@@ -257,8 +257,8 @@ public class GameController {
     }
 
     /**
-     * Stuurt STOCK bericht (top card van stock pile)
-     * Dit wordt naar ALLE spelers gestuurd (want iedereen kan het zien)
+     * Sends STOCK message (top card of stock pile)
+     * This is sent to ALL players (because everyone can see it)
      */
     public void sendStockTopCard(Player player) {
         StockPile stockPile = game.getStockPile(player);
@@ -273,30 +273,32 @@ public class GameController {
     // ========== HELPER METHODS ==========
 
     /**
-     * Maakt een TABLE protocol bericht
-     * Bevat: building piles + discard piles van alle spelers
+     * Creates a TABLE protocol message
+     * Contains: building piles + discard piles of all players
      */
     private String createTableMessage() {
         // Building piles info
         String[] buildingPileValues = new String[NUM_BUILDING_PILES];
         for (int i = 0; i < NUM_BUILDING_PILES; i++) {
             BuildingPile pile = game.getBuildingPile(i);
-            if (pile.isFull() || pile.isEmpty()) {
-                buildingPileValues[i] = null;  // Lege of volle pile = X
+            if (pile.isFull()) {
+                buildingPileValues[i] = null;  // Full pile = X (no more cards)
+            } else if (pile.isEmpty()) {
+                buildingPileValues[i] = "1";   // Empty pile expects card 1
             } else {
                 int nextExpected = pile.size() + 1;
                 buildingPileValues[i] = String.valueOf(nextExpected);
             }
         }
 
-        // Discard piles van alle spelers
+        // Discard piles of all players
         List<protocol.server.Table.PlayerTable> playerTables = new ArrayList<>();
         List<Player> players = game.getPlayers();
 
         for (Player player : players) {
             String name = player.getName();
 
-            // Haal 4 discard piles op
+            // Get 4 discard piles
             String[] discardPileValues = new String[NUM_DISCARD_PILES];
             for (int j = 0; j < NUM_DISCARD_PILES; j++) {
                 DiscardPile dpile = game.getDiscardPile(player, j);
@@ -309,7 +311,8 @@ public class GameController {
             }
 
             protocol.server.Table.PlayerTable pt = new protocol.server.Table.PlayerTable(
-                name, 0,
+                name,
+                0,  // Stock pile size (not shown in protocol, always 0)
                 discardPileValues[0],
                 discardPileValues[1],
                 discardPileValues[2],
@@ -318,7 +321,7 @@ public class GameController {
             playerTables.add(pt);
         }
 
-        // Maak TABLE bericht
+        // Create TABLE message
         protocol.server.Table.PlayerTable[] ptArray = playerTables.toArray(
             new protocol.server.Table.PlayerTable[0]
         );
@@ -334,11 +337,11 @@ public class GameController {
     }
 
     /**
-     * Converteert Position objecten naar CardAction objecten
-     * Dit is de "vertaling" van protocol naar game logica
+     * Converts Position objects to CardAction objects
+     * This is the "translation" from protocol to game logic
      */
     private CardAction positionToAction(Player player, Position from, Position to) {
-        // Van hand naar building of discard pile
+        // From hand to building or discard pile
         if (from instanceof HandPosition && to instanceof NumberedPilePosition) {
             HandPosition handPos = (HandPosition) from;
             NumberedPilePosition pilePos = (NumberedPilePosition) to;
@@ -347,7 +350,7 @@ public class GameController {
             Card actualCard;
 
             if (cardNum == null) {
-                // Skip-Bo kaart
+                // Skip-Bo card
                 List<Card> hand = game.getHand(player);
                 actualCard = null;
                 for (Card card : hand) {
@@ -371,7 +374,7 @@ public class GameController {
             }
         }
 
-        // Van stock naar building pile
+        // From stock to building pile
         if (from instanceof StockPilePosition && to instanceof NumberedPilePosition) {
             NumberedPilePosition pilePos = (NumberedPilePosition) to;
             if (pilePos.getType().equals("B")) {
@@ -379,7 +382,7 @@ public class GameController {
             }
         }
 
-        // Van discard naar building pile
+        // From discard to building pile
         if (from instanceof NumberedPilePosition && to instanceof NumberedPilePosition) {
             NumberedPilePosition fromPile = (NumberedPilePosition) from;
             NumberedPilePosition toPile = (NumberedPilePosition) to;
@@ -396,7 +399,7 @@ public class GameController {
     }
 
     /**
-     * Converteert een Card naar String (voor protocol)
+     * Converts a Card to String (for protocol)
      */
     private String cardToString(Card card) {
         if (card.isSkipBo()) {
@@ -407,7 +410,7 @@ public class GameController {
     }
 
     /**
-     * Converteert een lijst van Cards naar String array (voor protocol)
+     * Converts a list of Cards to String array (for protocol)
      */
     private String[] cardsToStrings(List<Card> cards) {
         String[] result = new String[cards.size()];
@@ -419,7 +422,7 @@ public class GameController {
     }
 
     /**
-     * Zoekt een Player object op basis van naam
+     * Finds a Player object by name
      */
     private Player getPlayerByName(String name) {
         List<Player> players = game.getPlayers();
@@ -432,7 +435,7 @@ public class GameController {
     }
 
     /**
-     * Zoekt een ClientHandler op basis van speler naam
+     * Finds a ClientHandler by player name
      */
     private ClientHandler getClientByName(String name) {
         for (int i = 0; i < playerNames.size(); i++) {
@@ -444,7 +447,7 @@ public class GameController {
     }
 
     /**
-     * Stuurt een error bericht naar een specifieke speler
+     * Sends an error message to a specific player
      */
     private void sendErrorToPlayer(String playerName, ErrorCode errorCode) {
         ClientHandler client = getClientByName(playerName);

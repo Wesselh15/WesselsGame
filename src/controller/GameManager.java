@@ -12,14 +12,14 @@ import java.util.List;
 import static model.GameConstants.*;
 
 /**
- * GameManager beheert de lobby en game lifecycle
- * SIMPEL: Alleen spelers toevoegen, game starten, game eindigen
- * GAME LOGICA zit in GameController!
+ * GameManager manages the lobby and game lifecycle
+ * SIMPLE: Only adds players, starts game, ends game
+ * GAME LOGIC is in GameController!
  */
 public class GameManager {
     private Game game;
     private Server server;
-    private GameController gameController;  // Nieuwe: doet de game logica
+    private GameController gameController;  // New: handles the game logic
 
     // Lobby tracking
     private List<String> playerNames;
@@ -30,150 +30,140 @@ public class GameManager {
         this.server = server;
         this.playerNames = new ArrayList<>();
         this.playerClients = new ArrayList<>();
-        this.requiredPlayers = -1;  // Nog niet gezet
+        this.requiredPlayers = -1;  // Not yet set
     }
 
     /**
-     * Voegt een speler toe aan de lobby
+     * Adds a player to the lobby
      * Protocol: HELLO~NAME~FEATURES -> WELCOME~NAME~FEATURES
      */
     public void addPlayer(String playerName, String featuresStr, ClientHandler client) {
-        // Check: game al gestart?
+        // Check: game already started?
         if (game != null) {
-            String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED)
-                                .transformToProtocolString();
-            client.sendMessage(errorMsg);
+            sendErrorToClient(client, ErrorCode.COMMAND_NOT_ALLOWED);
             return;
         }
 
-        // Check: naam al in gebruik?
+        // Check: name already in use?
         for (String existingName : playerNames) {
             if (existingName.equals(playerName)) {
-                String errorMsg = new protocol.server.Error(ErrorCode.NAME_IN_USE)
-                                    .transformToProtocolString();
-                client.sendMessage(errorMsg);
+                sendErrorToClient(client, ErrorCode.NAME_IN_USE);
                 return;
             }
         }
 
-        // Voeg speler toe aan lobby
+        // Add player to lobby
         playerNames.add(playerName);
         playerClients.add(client);
 
         // Parse features
         Feature[] features = parseFeatures(featuresStr);
 
-        // Stuur WELCOME (alleen naar deze client)
+        // Send WELCOME (only to this client)
         String welcomeMsg = new Welcome(playerName, features).transformToProtocolString();
         client.sendMessage(welcomeMsg);
 
-        System.out.println("Speler toegevoegd: " + playerName +
+        System.out.println("Player added: " + playerName +
                           " (" + playerNames.size() + "/" + requiredPlayers + ")");
 
-        // Check of we genoeg spelers hebben om te starten
+        // Check if we have enough players to start
         if (requiredPlayers > 0 && playerNames.size() >= requiredPlayers) {
-            System.out.println("Genoeg spelers! Game start automatisch...");
+            System.out.println("Enough players! Game starts automatically...");
             startGame();
         } else if (requiredPlayers > 0) {
-            System.out.println("Wachten op " + (requiredPlayers - playerNames.size()) +
-                              " meer speler(s)");
+            System.out.println("Waiting for " + (requiredPlayers - playerNames.size()) +
+                              " more player(s)");
         } else {
-            System.out.println("Wachten op GAME~AMOUNT command");
+            System.out.println("Waiting for GAME~AMOUNT command");
         }
     }
 
     /**
-     * Zet het vereiste aantal spelers
-     * Protocol: GAME~AMOUNT -> QUEUE of START
+     * Sets the required number of players
+     * Protocol: GAME~AMOUNT -> QUEUE or START
      */
     public void setRequiredPlayers(int count, ClientHandler requestingClient) {
-        // Check: game al gestart?
+        // Check: game already started?
         if (game != null) {
-            String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED)
-                                .transformToProtocolString();
-            requestingClient.sendMessage(errorMsg);
+            sendErrorToClient(requestingClient, ErrorCode.COMMAND_NOT_ALLOWED);
             return;
         }
 
-        // Check: al gezet?
+        // Check: already set?
         if (requiredPlayers != -1) {
-            System.out.println("Required players al gezet: " + requiredPlayers);
-            String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED)
-                                .transformToProtocolString();
-            requestingClient.sendMessage(errorMsg);
+            System.out.println("Required players already set: " + requiredPlayers);
+            sendErrorToClient(requestingClient, ErrorCode.COMMAND_NOT_ALLOWED);
             return;
         }
 
-        // Valideer: 2-6 spelers
+        // Validate: 2-6 players
         if (count < MIN_PLAYERS || count > MAX_PLAYERS) {
-            String errorMsg = new protocol.server.Error(ErrorCode.INVALID_COMMAND)
-                                .transformToProtocolString();
-            requestingClient.sendMessage(errorMsg);
+            sendErrorToClient(requestingClient, ErrorCode.INVALID_COMMAND);
             return;
         }
 
         this.requiredPlayers = count;
-        System.out.println("Game start met " + requiredPlayers + " spelers");
+        System.out.println("Game starts with " + requiredPlayers + " players");
 
-        // Check of we genoeg spelers hebben
+        // Check if we have enough players
         if (playerNames.size() >= requiredPlayers) {
             startGame();
         } else {
-            // Stuur QUEUE bericht (nog niet genoeg spelers)
+            // Send QUEUE message (not enough players yet)
             String queueMsg = new Queue().transformToProtocolString();
             server.broadcast(queueMsg);
-            System.out.println("Wachten op meer spelers: " + playerNames.size() +
+            System.out.println("Waiting for more players: " + playerNames.size() +
                               "/" + requiredPlayers);
         }
     }
 
     /**
-     * Start het spel!
-     * Maakt Game object en GameController
+     * Starts the game!
+     * Creates Game object and GameController
      */
     private void startGame() {
         if (game != null) {
-            return;  // Al gestart
+            return;  // Already started
         }
 
-        System.out.println("Game start met " + playerNames.size() + " spelers");
+        System.out.println("Game starts with " + playerNames.size() + " players");
 
-        // Maak Player objecten
+        // Create Player objects
         List<Player> players = new ArrayList<>();
         for (String name : playerNames) {
             players.add(new Player(name));
         }
 
-        // Maak Game
+        // Create Game
         game = new Game(players);
 
-        // Maak GameController (doet alle game logica!)
+        // Create GameController (handles all game logic!)
         gameController = new GameController(game, server, playerNames, playerClients);
 
-        // Stuur START bericht
+        // Send START message
         String[] names = playerNames.toArray(new String[0]);
         String startMsg = new Start(names).transformToProtocolString();
         server.broadcast(startMsg);
 
-        // Stuur initiële game state (via GameController)
+        // Send initial game state (via GameController)
         gameController.sendGameStateToAll();
 
-        // Stuur alle stock pile top cards
+        // Send all stock pile top cards
         for (Player player : players) {
             gameController.sendStockTopCard(player);
         }
 
-        // Kondig aan wie er begint
+        // Announce who starts
         Player currentPlayer = game.getCurrentPlayer();
         String turnMsg = new Turn(currentPlayer.getName()).transformToProtocolString();
         server.broadcast(turnMsg);
 
-        System.out.println("Game gestart! " + currentPlayer.getName() + " begint.");
+        System.out.println("Game started! " + currentPlayer.getName() + " begins.");
     }
 
     /**
-     * Verwerkt een move (PLAY command)
-     * Delegeert naar GameController
+     * Processes a move (PLAY command)
+     * Delegates to GameController
      */
     public void handleMove(String playerName, Position from, Position to) {
         if (game == null || gameController == null) {
@@ -185,8 +175,8 @@ public class GameManager {
     }
 
     /**
-     * Beëindigt een beurt (END command)
-     * Delegeert naar GameController
+     * Ends a turn (END command)
+     * Delegates to GameController
      */
     public void endTurn(String playerName) {
         if (game == null || gameController == null) {
@@ -198,8 +188,8 @@ public class GameManager {
     }
 
     /**
-     * Stuurt TABLE naar een speler (TABLE command)
-     * Delegeert naar GameController
+     * Sends TABLE to a player (TABLE command)
+     * Delegates to GameController
      */
     public void sendTableToPlayer(String playerName) {
         if (game == null || gameController == null) {
@@ -210,8 +200,8 @@ public class GameManager {
     }
 
     /**
-     * Stuurt HAND naar een speler (HAND command)
-     * Delegeert naar GameController
+     * Sends HAND to a player (HAND command)
+     * Delegates to GameController
      */
     public void sendHandToPlayer(String playerName) {
         if (game == null || gameController == null) {
@@ -222,11 +212,11 @@ public class GameManager {
     }
 
     /**
-     * Verwijdert een speler (disconnect)
-     * Protocol: Broadcast ERROR~103 en beëindig game
+     * Removes a player (disconnect)
+     * Protocol: Broadcast ERROR~103 and end game
      */
     public void removePlayer(String playerName) {
-        // Verwijder uit lijsten
+        // Remove from lists
         for (int i = 0; i < playerNames.size(); i++) {
             if (playerNames.get(i).equals(playerName)) {
                 playerNames.remove(i);
@@ -235,23 +225,23 @@ public class GameManager {
             }
         }
 
-        // Als game bezig is: beëindig game (voorkomt bugs)
+        // If game in progress: end game (prevents bugs)
         if (game != null) {
             String errorMsg = new protocol.server.Error(ErrorCode.PLAYER_DISCONNECTED)
                                 .transformToProtocolString();
             server.broadcast(errorMsg);
 
-            System.out.println("Game beëindigd door disconnect: " + playerName);
+            System.out.println("Game ended due to disconnect: " + playerName);
             game = null;
             gameController = null;
-            requiredPlayers = -1;  // Reset voor nieuwe game
+            requiredPlayers = -1;  // Reset for new game
         }
     }
 
     // ========== HELPER METHODS ==========
 
     /**
-     * Parse features string (bijv. "CLM") naar Feature array
+     * Parses features string (e.g. "CLM") to Feature array
      * C = CHAT, L = LOBBY, M = MASTER
      */
     private Feature[] parseFeatures(String featuresStr) {
@@ -274,7 +264,7 @@ public class GameManager {
     }
 
     /**
-     * Zoekt een ClientHandler op basis van naam
+     * Finds a ClientHandler by name
      */
     private ClientHandler getClientByName(String name) {
         for (int i = 0; i < playerNames.size(); i++) {
@@ -286,10 +276,21 @@ public class GameManager {
     }
 
     /**
-     * Stuurt error naar een speler
+     * Sends error to a player
      */
     private void sendErrorToPlayer(String playerName, ErrorCode errorCode) {
         ClientHandler client = getClientByName(playerName);
+        if (client != null) {
+            String errorMsg = new protocol.server.Error(errorCode)
+                                .transformToProtocolString();
+            client.sendMessage(errorMsg);
+        }
+    }
+
+    /**
+     * Sends error to a client directly
+     */
+    private void sendErrorToClient(ClientHandler client, ErrorCode errorCode) {
         if (client != null) {
             String errorMsg = new protocol.server.Error(errorCode)
                                 .transformToProtocolString();
