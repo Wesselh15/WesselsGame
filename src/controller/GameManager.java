@@ -336,13 +336,10 @@ public class GameManager {
         String[] buildingPileValues = new String[NUM_BUILDING_PILES];
         for (int i = 0; i < NUM_BUILDING_PILES; i++) {
             BuildingPile pile = game.getBuildingPile(i);
-            // Next expected card = current size + 1
-            // If pile is empty, next expected is 1
-            // If pile is full (size 12), it will be cleared, so show null (X)
-            if (pile.isFull()) {
-                buildingPileValues[i] = null; // Full pile shows as X
-            } else if (pile.isEmpty()) {
-                buildingPileValues[i] = "1"; // Empty pile expects card 1
+            // Empty or full piles show as X (null)
+            // Non-empty piles show the next expected card number
+            if (pile.isFull() || pile.isEmpty()) {
+                buildingPileValues[i] = null; // Empty or full pile shows as X
             } else {
                 int nextExpected = pile.size() + 1;
                 buildingPileValues[i] = String.valueOf(nextExpected);
