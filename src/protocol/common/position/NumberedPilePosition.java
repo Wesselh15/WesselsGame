@@ -12,6 +12,14 @@ public class NumberedPilePosition implements Position {
         this.number = number;
     }
 
+    public String getType() {
+        return pile.toString();
+    }
+
+    public int getIndex() {
+        return number;
+    }
+
     public String toString(){
         return pile + Command.VALUE_SEPERATOR + number;
     }
