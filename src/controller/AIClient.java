@@ -137,7 +137,8 @@ public class AIClient {
         try {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
-            // Ignore
+            Thread.currentThread().interrupt();
+            System.err.println("[AI] Thinking interrupted");
         }
 
         // Try to play a few random cards
@@ -162,7 +163,8 @@ public class AIClient {
             try {
                 Thread.sleep(500);
             } catch (InterruptedException e) {
-                // Ignore
+                Thread.currentThread().interrupt();
+                System.err.println("[AI] Move delay interrupted");
             }
         }
 
@@ -180,7 +182,8 @@ public class AIClient {
             try {
                 Thread.sleep(300);
             } catch (InterruptedException e) {
-                // Ignore
+                Thread.currentThread().interrupt();
+                System.err.println("[AI] End delay interrupted");
             }
 
             // Protocol: After discard, must send END command to end turn

@@ -46,7 +46,9 @@ public class ClientHandler implements Runnable {
             return;
         }
 
-        System.out.println("Received from " + clientName + ": " + message);
+        // Check if clientName is set to avoid "Received from null"
+        String sender = (clientName != null) ? clientName : "unknown";
+        System.out.println("Received from " + sender + ": " + message);
 
         // Split message into parts
         String[] parts = message.split(Command.SEPERATOR);

@@ -1,5 +1,7 @@
 package model;
 
+import static model.GameConstants.*;
+
 public class CardActionStockPileToBuildingPile implements CardAction{
     private int buildingPileIndex;
 
@@ -26,7 +28,7 @@ public class CardActionStockPileToBuildingPile implements CardAction{
             return false;
         }
 
-        if (buildingPileIndex < 0 || buildingPileIndex >= 4) {
+        if (buildingPileIndex < 0 || buildingPileIndex >= NUM_BUILDING_PILES) {
             return false;
         }
 

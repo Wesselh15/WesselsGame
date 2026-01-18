@@ -1,5 +1,7 @@
 package model;
 
+import static model.GameConstants.*;
+
 public class CardActionHandToBuildingPile implements CardAction {
     private model.Card card;
     private int buildingPileIndex;
@@ -25,7 +27,7 @@ public class CardActionHandToBuildingPile implements CardAction {
         if (!game.getHand(player).contains(card)) {
             return false;
         }
-        if (buildingPileIndex < 0 || buildingPileIndex >=4) {
+        if (buildingPileIndex < 0 || buildingPileIndex >= NUM_BUILDING_PILES) {
             return false;
         }
         model.BuildingPile pile = game.getBuildingPile(buildingPileIndex);

@@ -1,5 +1,7 @@
 package model;
 
+import static model.GameConstants.*;
+
 public class CardActionHandToDiscardPile implements CardAction {
 
     private model.Card card;
@@ -19,7 +21,7 @@ public class CardActionHandToDiscardPile implements CardAction {
     @Override
     public boolean isValid(Game game, Player player) {
         return game.getHand(player).contains(card) &&
-                discardPile >= 0 && discardPile < 4;
+                discardPile >= 0 && discardPile < NUM_DISCARD_PILES;
     }
 
 }

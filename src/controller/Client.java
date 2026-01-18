@@ -108,7 +108,8 @@ public class Client {
                     try {
                         Thread.sleep(100);
                     } catch (InterruptedException e) {
-                        // Ignore
+                        Thread.currentThread().interrupt();
+                        System.err.println("Sleep interrupted during discard wait");
                     }
                     sendMessage("END");
                     System.out.println(">>> Automatically sent END after discard");
