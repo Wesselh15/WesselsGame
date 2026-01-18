@@ -3,6 +3,8 @@ package model;
 import java.util.ArrayList;
 import java.util.List;
 
+import static model.GameConstants.*;
+
 public class BuildingPile {
     private List<Card> cards;
 
@@ -56,7 +58,7 @@ public class BuildingPile {
 
     // Check if the pile is full reached size 12
     public boolean isFull() {
-        return cards.size() >= 12;
+        return cards.size() >= BUILDING_PILE_FULL_SIZE;
     }
 
     // Clears the pile when its full
