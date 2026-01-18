@@ -7,6 +7,8 @@ import java.util.Random;
 import java.util.List;
 import java.util.HashMap;
 
+import static model.GameConstants.*;
+
 
 public class Game {
 
@@ -39,12 +41,12 @@ public class Game {
 
         // Generates 4 building piles (shared by all players)
         this.buildingPiles = new ArrayList<>();
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < NUM_BUILDING_PILES; i++) {
             buildingPiles.add(new BuildingPile());
         }
 
         // Assign cards to players
-        int cardsToHandout = players.size() <= 4 ? 30 : 20;
+        int cardsToHandout = players.size() <= MAX_PLAYERS / 2 ? STOCK_SIZE_SMALL_GAME : STOCK_SIZE_LARGE_GAME;
         for (Player player : players){
             List<Card> handOut = new ArrayList<>(drawPile.subList(0, cardsToHandout));
             stockPiles.put(player, new StockPile(handOut));
@@ -53,7 +55,7 @@ public class Game {
 
             // Initialize 4 discard piles per player
             List<DiscardPile> playerDiscardPiles = new ArrayList<>();
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < NUM_DISCARD_PILES; i++) {
                 playerDiscardPiles.add(new DiscardPile());
             }
             discardPiles.put(player, playerDiscardPiles);
@@ -70,7 +72,7 @@ public class Game {
 
     public void handCards(Player player) {
         // Calculate how many cards to draw
-        int cardsToDraw = 5 - hand.get(player).size();
+        int cardsToDraw = HAND_SIZE - hand.get(player).size();
 
         // Don't draw more than available in draw pile
         if (cardsToDraw > drawPile.size()) {
@@ -181,8 +183,7 @@ public class Game {
             return null;
         }
 
-        for (int i = 0; i < playerHand.size(); i++) {
-            Card card = playerHand.get(i);
+        for (Card card : playerHand) {
             if (!card.isSkipBo() && card.getNumber() == cardNumber) {
                 return card;
             }

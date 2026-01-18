@@ -9,6 +9,8 @@ import protocol.common.position.*;
 import java.util.ArrayList;
 import java.util.List;
 
+import static model.GameConstants.*;
+
 /**
  * Manages a single game instance
  * Handles player connections and converts protocol messages to game actions
@@ -44,8 +46,8 @@ public class GameManager {
         }
 
         // Check if name already taken (ERROR~002)
-        for (int i = 0; i < playerNames.size(); i++) {
-            if (playerNames.get(i).equals(playerName)) {
+        for (String existingName : playerNames) {
+            if (existingName.equals(playerName)) {
                 String errorMsg = new protocol.server.Error(ErrorCode.NAME_IN_USE).transformToProtocolString();
                 client.sendMessage(errorMsg);
                 return;
@@ -103,7 +105,7 @@ public class GameManager {
         }
 
         // Validate: must be 2-6 players
-        if (count < 2 || count > 6) {
+        if (count < MIN_PLAYERS || count > MAX_PLAYERS) {
             String errorMsg = new protocol.server.Error(ErrorCode.INVALID_COMMAND).transformToProtocolString();
             requestingClient.sendMessage(errorMsg);
             return;
@@ -133,8 +135,8 @@ public class GameManager {
 
         // Create Player objects for the game
         List<Player> players = new ArrayList<>();
-        for (int i = 0; i < playerNames.size(); i++) {
-            Player player = new Player(playerNames.get(i));
+        for (String name : playerNames) {
+            Player player = new Player(name);
             players.add(player);
         }
 
@@ -142,10 +144,7 @@ public class GameManager {
         game = new Game(players);
 
         // Tell everyone the game is starting
-        String[] names = new String[playerNames.size()];
-        for (int i = 0; i < playerNames.size(); i++) {
-            names[i] = playerNames.get(i);
-        }
+        String[] names = playerNames.toArray(new String[0]);
         String startMsg = new Start(names).transformToProtocolString();
         server.broadcast(startMsg);
 
@@ -153,8 +152,8 @@ public class GameManager {
         sendGameStateToAll();
 
         // Send all players' stock pile top cards
-        for (int i = 0; i < players.size(); i++) {
-            sendStockTopCard(players.get(i));
+        for (Player player : players) {
+            sendStockTopCard(player);
         }
 
         // Tell everyone whose turn it is
@@ -165,11 +164,7 @@ public class GameManager {
 
     public void handleMove(String playerName, Position from, Position to) {
         if (game == null) {
-            ClientHandler client = getClientByName(playerName);
-            if (client != null) {
-                String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
-                client.sendMessage(errorMsg);
-            }
+            sendErrorToPlayer(playerName, ErrorCode.COMMAND_NOT_ALLOWED);
             return;
         }
 
@@ -209,18 +204,10 @@ public class GameManager {
                 // NOTE: Turn does NOT change automatically anymore
                 // Client must send END command to end the turn
             } else {
-                ClientHandler client = getClientByName(playerName);
-                if (client != null) {
-                    String errorMsg = new protocol.server.Error(ErrorCode.INVALID_MOVE).transformToProtocolString();
-                    client.sendMessage(errorMsg);
-                }
+                sendErrorToPlayer(playerName, ErrorCode.INVALID_MOVE);
             }
         } catch (GameException e) {
-            ClientHandler client = getClientByName(playerName);
-            if (client != null) {
-                String errorMsg = new protocol.server.Error(ErrorCode.INVALID_MOVE).transformToProtocolString();
-                client.sendMessage(errorMsg);
-            }
+            sendErrorToPlayer(playerName, ErrorCode.INVALID_MOVE);
         }
     }
 
@@ -230,11 +217,7 @@ public class GameManager {
      */
     public void endTurn(String playerName) {
         if (game == null) {
-            ClientHandler client = getClientByName(playerName);
-            if (client != null) {
-                String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
-                client.sendMessage(errorMsg);
-            }
+            sendErrorToPlayer(playerName, ErrorCode.COMMAND_NOT_ALLOWED);
             return;
         }
 
@@ -247,11 +230,7 @@ public class GameManager {
         Player currentPlayer = game.getCurrentPlayer();
         if (currentPlayer != player) {
             // Not your turn - send error
-            ClientHandler client = getClientByName(playerName);
-            if (client != null) {
-                String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
-                client.sendMessage(errorMsg);
-            }
+            sendErrorToPlayer(playerName, ErrorCode.COMMAND_NOT_ALLOWED);
             return;
         }
 
@@ -273,11 +252,7 @@ public class GameManager {
             sendStockTopCard(nextPlayer);
 
         } catch (GameException e) {
-            ClientHandler client = getClientByName(playerName);
-            if (client != null) {
-                String errorMsg = new protocol.server.Error(ErrorCode.INVALID_MOVE).transformToProtocolString();
-                client.sendMessage(errorMsg);
-            }
+            sendErrorToPlayer(playerName, ErrorCode.INVALID_MOVE);
         }
     }
 
@@ -316,8 +291,7 @@ public class GameManager {
 
         // Send each player their hand
         List<Player> players = game.getPlayers();
-        for (int i = 0; i < players.size(); i++) {
-            Player player = players.get(i);
+        for (Player player : players) {
             String name = player.getName();
             ClientHandler client = getClientByName(name);
 
@@ -344,8 +318,8 @@ public class GameManager {
     private String createTableMessage() {
         // Get building piles info using a loop
         // Protocol: Show the next expected card number for each building pile
-        String[] buildingPileValues = new String[4];
-        for (int i = 0; i < 4; i++) {
+        String[] buildingPileValues = new String[NUM_BUILDING_PILES];
+        for (int i = 0; i < NUM_BUILDING_PILES; i++) {
             BuildingPile pile = game.getBuildingPile(i);
             // Next expected card = current size + 1
             // If pile is empty, next expected is 1
@@ -364,13 +338,12 @@ public class GameManager {
         List<protocol.server.Table.PlayerTable> playerTables = new ArrayList<>();
         List<Player> players = game.getPlayers();
 
-        for (int i = 0; i < players.size(); i++) {
-            Player player = players.get(i);
+        for (Player player : players) {
             String name = player.getName();
 
             // Use a loop for discard piles
-            String[] discardPileValues = new String[4];
-            for (int j = 0; j < 4; j++) {
+            String[] discardPileValues = new String[NUM_DISCARD_PILES];
+            for (int j = 0; j < NUM_DISCARD_PILES; j++) {
                 DiscardPile dpile = game.getDiscardPile(player, j);
                 if (!dpile.isEmpty()) {
                     Card top = dpile.topCard();
@@ -391,10 +364,7 @@ public class GameManager {
         }
 
         // Convert list to array
-        protocol.server.Table.PlayerTable[] ptArray = new protocol.server.Table.PlayerTable[playerTables.size()];
-        for (int i = 0; i < playerTables.size(); i++) {
-            ptArray[i] = playerTables.get(i);
-        }
+        protocol.server.Table.PlayerTable[] ptArray = playerTables.toArray(new protocol.server.Table.PlayerTable[0]);
 
         protocol.server.Table table = new protocol.server.Table(
             ptArray,
@@ -410,17 +380,13 @@ public class GameManager {
         List<Winner.Score> scoreList = new ArrayList<>();
         List<Player> players = game.getPlayers();
 
-        for (int i = 0; i < players.size(); i++) {
-            Player player = players.get(i);
+        for (Player player : players) {
             int score = player.equals(winner) ? 100 : 0;
             Winner.Score s = new Winner.Score(player.getName(), score);
             scoreList.add(s);
         }
 
-        Winner.Score[] scores = new Winner.Score[scoreList.size()];
-        for (int i = 0; i < scoreList.size(); i++) {
-            scores[i] = scoreList.get(i);
-        }
+        Winner.Score[] scores = scoreList.toArray(new Winner.Score[0]);
 
         String winnerMsg = new Winner(scores).transformToProtocolString();
         server.broadcast(winnerMsg);
@@ -482,9 +448,9 @@ public class GameManager {
         }
 
         List<Player> players = game.getPlayers();
-        for (int i = 0; i < players.size(); i++) {
-            if (players.get(i).getName().equals(name)) {
-                return players.get(i);
+        for (Player player : players) {
+            if (player.getName().equals(name)) {
+                return player;
             }
         }
         return null;
@@ -509,8 +475,9 @@ public class GameManager {
 
     private String[] cardsToStrings(List<Card> cards) {
         String[] result = new String[cards.size()];
-        for (int i = 0; i < cards.size(); i++) {
-            result[i] = cardToString(cards.get(i));
+        int index = 0;
+        for (Card card : cards) {
+            result[index++] = cardToString(card);
         }
         return result;
     }
@@ -528,9 +495,9 @@ public class GameManager {
                 // Skip-Bo card
                 List<Card> hand = game.getHand(player);
                 actualCard = null;
-                for (int i = 0; i < hand.size(); i++) {
-                    if (hand.get(i).isSkipBo()) {
-                        actualCard = hand.get(i);
+                for (Card card : hand) {
+                    if (card.isSkipBo()) {
+                        actualCard = card;
                         break;
                     }
                 }
@@ -568,5 +535,20 @@ public class GameManager {
         }
 
         return null;
+    }
+
+    /**
+     * Sends an error message to a specific player
+     *
+     * @param playerName Name of the player to send error to
+     * @param errorCode The error code to send
+     */
+    private void sendErrorToPlayer(String playerName, ErrorCode errorCode) {
+        ClientHandler client = getClientByName(playerName);
+        if (client != null) {
+            String errorMsg = new protocol.server.Error(errorCode)
+                                 .transformToProtocolString();
+            client.sendMessage(errorMsg);
+        }
     }
 }
