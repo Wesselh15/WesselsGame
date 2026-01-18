@@ -13,11 +13,11 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Slimme AI client die alleen valide moves doet
- * De AI weet:
- * - Wat de building piles verwachten (1-12 of X als vol)
- * - Wat zijn stock top card is
- * - Welke moves geldig zijn
+ * Smart AI client that only makes valid moves
+ * The AI knows:
+ * - What the building piles expect (1-12 or X if full)
+ * - What its stock top card is
+ * - Which moves are valid
  */
 public class AIClient {
     private String host;
@@ -33,9 +33,9 @@ public class AIClient {
     private List<String> hand;
     private boolean myTurn;
 
-    // NIEUW: Smart AI tracking
-    private String stockTopCard;           // Wat is mijn stock top card?
-    private String[] buildingPileNext;     // Wat verwacht elke building pile? (1-12 of X)
+    // NEW: Smart AI tracking
+    private String stockTopCard;           // What is my stock top card?
+    private String[] buildingPileNext;     // What does each building pile expect? (1-12 or X)
 
     public AIClient(String host, int port, String playerName) {
         this.host = host;
@@ -73,15 +73,15 @@ public class AIClient {
             out = new PrintWriter(socket.getOutputStream(), true);
             running = true;
 
-            System.out.println("[AI " + playerName + "] Verbonden met server");
+            System.out.println("[AI " + playerName + "] Connected to server");
 
-            // Stuur HELLO
+            // Send HELLO
             Hello hello = new Hello(playerName, new Feature[0]);
             sendMessage(hello.transformToProtocolString());
 
             return true;
         } catch (IOException e) {
-            System.out.println("[AI " + playerName + "] Kon niet verbinden met server");
+            System.out.println("[AI " + playerName + "] Could not connect to server");
             return false;
         }
     }
@@ -94,14 +94,14 @@ public class AIClient {
             }
         } catch (IOException e) {
             if (running) {
-                System.err.println("[AI " + playerName + "] Verbinding verloren");
+                System.err.println("[AI " + playerName + "] Connection lost");
             }
         }
     }
 
     /**
-     * Verwerkt berichten van de server
-     * LET OP: Nu ook STOCK en TABLE berichten voor slimme moves!
+     * Processes messages from the server
+     * NOTE: Now also STOCK and TABLE messages for smart moves!
      */
     private void handleMessage(String message) {
         if (message.isEmpty()) {
@@ -116,7 +116,7 @@ public class AIClient {
         String command = parts[0];
 
         if (command.equals("START")) {
-            System.out.println("[AI " + playerName + "] Game start!");
+            System.out.println("[AI " + playerName + "] Game starts!");
 
         } else if (command.equals("HAND")) {
             // Update hand
@@ -126,21 +126,21 @@ public class AIClient {
 
         } else if (command.equals("STOCK")) {
             // STOCK~PLAYER~CARD
-            // Als het mijn stock is, onthoud de top card
+            // If it's my stock, remember the top card
             if (parts.length >= 3 && parts[1].equals(playerName)) {
                 stockTopCard = parts[2];
                 System.out.println("[AI " + playerName + "] Stock top: " + stockTopCard);
             }
 
         } else if (command.equals("TABLE")) {
-            // TABLE bericht bevat building pile info
+            // TABLE message contains building pile info
             updateTableInfo(parts);
 
         } else if (command.equals("TURN")) {
             if (parts.length >= 2) {
                 if (parts[1].equals(playerName)) {
                     myTurn = true;
-                    System.out.println("[AI " + playerName + "] Mijn beurt!");
+                    System.out.println("[AI " + playerName + "] My turn!");
                     playTurn();
                 } else {
                     myTurn = false;
@@ -152,15 +152,15 @@ public class AIClient {
             running = false;
 
         } else if (command.equals("ROUND")) {
-            // Nieuwe ronde gestart
+            // New round started
             if (parts.length >= 2) {
-                System.out.println("[AI " + playerName + "] Nieuwe ronde: " + parts[1]);
+                System.out.println("[AI " + playerName + "] New round: " + parts[1]);
             }
         }
     }
 
     /**
-     * Update hand van AI
+     * Updates AI's hand
      */
     private void updateHand(String handData) {
         hand.clear();
@@ -168,19 +168,19 @@ public class AIClient {
         for (String card : cards) {
             hand.add(card);
         }
-        System.out.println("[AI " + playerName + "] Hand updated: " + hand.size() + " kaarten");
+        System.out.println("[AI " + playerName + "] Hand updated: " + hand.size() + " cards");
     }
 
     /**
-     * NIEUW: Parse TABLE bericht om building pile info te krijgen
+     * NEW: Parse TABLE message to get building pile info
      * TABLE protocol: TABLE~players~B.0~B.1~B.2~B.3~...
      *
-     * Building pile waarden:
-     * - "1" tot "12" = verwacht die kaart
-     * - "X" = vol (12 kaarten) of leeg
+     * Building pile values:
+     * - "1" to "12" = expects that card
+     * - "X" = full (12 cards) or empty
      */
     private void updateTableInfo(String[] parts) {
-        // TABLE heeft minimaal: TABLE~players~B.0~B.1~B.2~B.3
+        // TABLE has at least: TABLE~players~B.0~B.1~B.2~B.3
         if (parts.length >= 6) {
             buildingPileNext[0] = parts[2];  // B.0
             buildingPileNext[1] = parts[3];  // B.1
@@ -193,32 +193,32 @@ public class AIClient {
     }
 
     /**
-     * SLIMME AI STRATEGIE
-     * 1. Probeer stock pile te spelen (prioriteit!)
-     * 2. Alleen naar building piles die de kaart accepteren
-     * 3. Stop als geen valide moves
-     * 4. Discard om beurt te eindigen
+     * SMART AI STRATEGY
+     * 1. Try to play stock pile (priority!)
+     * 2. Only to building piles that accept the card
+     * 3. Stop if no valid moves
+     * 4. Discard to end turn
      */
     private void playTurn() {
         try {
-            Thread.sleep(1000);  // Wacht even (voor realisme)
+            Thread.sleep(1000);  // Wait a moment (for realism)
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
 
-        // Probeer stock pile moves (1-3 keer)
+        // Try stock pile moves (1-3 times)
         int movesPlayed = 0;
         int maxMoves = random.nextInt(3) + 1;
 
         for (int i = 0; i < maxMoves && stockTopCard != null; i++) {
-            // Zoek een building pile die onze stock card accepteert
+            // Find a building pile that accepts our stock card
             int validPile = findValidBuildingPile(stockTopCard);
 
             if (validPile >= 0) {
-                // Valide move gevonden!
+                // Valid move found!
                 String move = "PLAY~S~B." + validPile;
                 sendMessage(move);
-                System.out.println("[AI " + playerName + "] Slimme stock move: " + move);
+                System.out.println("[AI " + playerName + "] Smart stock move: " + move);
                 movesPlayed++;
 
                 try {
@@ -227,16 +227,16 @@ public class AIClient {
                     Thread.currentThread().interrupt();
                 }
             } else {
-                // Geen valide pile voor stock card, stop proberen
-                System.out.println("[AI " + playerName + "] Geen valide move voor stock card " +
+                // No valid pile for stock card, stop trying
+                System.out.println("[AI " + playerName + "] No valid move for stock card " +
                                   stockTopCard);
                 break;
             }
         }
 
-        // Discard om beurt te eindigen (verplicht)
+        // Discard to end turn (mandatory)
         if (!hand.isEmpty()) {
-            String card = hand.get(0);  // Neem eerste kaart
+            String card = hand.get(0);  // Take first card
             int discardPile = random.nextInt(4);
 
             String discardMove = "PLAY~H." + card + "~D." + discardPile;
@@ -250,58 +250,58 @@ public class AIClient {
             }
         }
 
-        // Beëindig beurt
+        // End turn
         sendMessage("END");
-        System.out.println("[AI " + playerName + "] END command gestuurd");
+        System.out.println("[AI " + playerName + "] END command sent");
         myTurn = false;
     }
 
     /**
-     * NIEUW: Zoekt een building pile die de kaart accepteert
+     * NEW: Finds a building pile that accepts the card
      *
-     * @param cardStr De kaart ("1" tot "12" of "SB" voor Skip-Bo)
-     * @return Index van valide pile (0-3), of -1 als geen valide pile
+     * @param cardStr The card ("1" to "12" or "SB" for Skip-Bo)
+     * @return Index of valid pile (0-3), or -1 if no valid pile
      */
     private int findValidBuildingPile(String cardStr) {
         if (buildingPileNext == null || cardStr == null) {
             return -1;
         }
 
-        // Skip-Bo kan op elke pile (behalve volle piles)
+        // Skip-Bo can go on any pile (except full piles)
         if (cardStr.equals("SB")) {
             for (int i = 0; i < 4; i++) {
                 if (buildingPileNext[i] != null && !buildingPileNext[i].equals("X")) {
-                    return i;  // Eerste niet-volle pile
+                    return i;  // First non-full pile
                 }
             }
             return -1;
         }
 
-        // Normale kaart: zoek pile die deze kaart verwacht
+        // Normal card: find pile that expects this card
         try {
             int cardNum = Integer.parseInt(cardStr);
 
             for (int i = 0; i < 4; i++) {
                 String expected = buildingPileNext[i];
                 if (expected == null || expected.equals("X")) {
-                    continue;  // Pile is vol of leeg
+                    continue;  // Pile is full or empty
                 }
 
                 int expectedNum = Integer.parseInt(expected);
                 if (cardNum == expectedNum) {
-                    return i;  // Gevonden!
+                    return i;  // Found!
                 }
             }
         } catch (NumberFormatException e) {
-            // Ongeldige kaart format
+            // Invalid card format
             return -1;
         }
 
-        return -1;  // Geen valide pile gevonden
+        return -1;  // No valid pile found
     }
 
     /**
-     * Stuurt een bericht naar de server
+     * Sends a message to the server
      */
     private void sendMessage(String message) {
         if (out != null) {
