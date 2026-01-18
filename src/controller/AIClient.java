@@ -174,7 +174,18 @@ public class AIClient {
 
             String discardMove = "PLAY~H." + card + "~D." + discardPile;
             sendMessage(discardMove);
-            System.out.println("[AI " + playerName + "] Ending turn: " + discardMove);
+            System.out.println("[AI " + playerName + "] Discarding: " + discardMove);
+
+            // Wait a bit before sending END
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                // Ignore
+            }
+
+            // Protocol: After discard, must send END command to end turn
+            sendMessage("END");
+            System.out.println("[AI " + playerName + "] Sent END command");
         }
 
         myTurn = false;

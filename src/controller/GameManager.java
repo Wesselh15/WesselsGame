@@ -27,10 +27,15 @@ public class GameManager {
         this.server = server;
         this.playerNames = new ArrayList<>();
         this.playerClients = new ArrayList<>();
-        this.requiredPlayers = 2;
+        // Protocol: No default required players, must be set via GAME command
+        this.requiredPlayers = -1;
     }
 
-    public void addPlayer(String playerName, ClientHandler client) {
+    /**
+     * Adds a player to the game lobby
+     * Protocol: HELLO~NAME~FEATURES -> WELCOME~NAME~FEATURES (only to requesting client)
+     */
+    public void addPlayer(String playerName, String featuresStr, ClientHandler client) {
         // Check if game already started
         if (game != null) {
             String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
@@ -38,7 +43,7 @@ public class GameManager {
             return;
         }
 
-        // Check if name already taken
+        // Check if name already taken (ERROR~002)
         for (int i = 0; i < playerNames.size(); i++) {
             if (playerNames.get(i).equals(playerName)) {
                 String errorMsg = new protocol.server.Error(ErrorCode.NAME_IN_USE).transformToProtocolString();
@@ -51,18 +56,45 @@ public class GameManager {
         playerNames.add(playerName);
         playerClients.add(client);
 
-        // Tell everyone a new player joined
-        String welcomeMsg = new Welcome(playerName, new Feature[0]).transformToProtocolString();
-        server.broadcast(welcomeMsg);
+        // Parse features string to Feature array (simple implementation)
+        Feature[] features = parseFeatures(featuresStr);
+
+        // Protocol: Send WELCOME only to this client (NOT broadcast)
+        String welcomeMsg = new Welcome(playerName, features).transformToProtocolString();
+        client.sendMessage(welcomeMsg);
 
         System.out.println("Player added: " + playerName + " (" + playerNames.size() + "/" + requiredPlayers + ")");
 
-        // Start game if we have enough players
-        if (playerNames.size() >= requiredPlayers) {
-            startGame();
-        }
+        // NOTE: Game does NOT auto-start anymore
+        // Client must send GAME~AMOUNT command
     }
 
+    /**
+     * Parses features string (e.g., "CLM") into Feature array
+     */
+    private Feature[] parseFeatures(String featuresStr) {
+        if (featuresStr == null || featuresStr.isEmpty()) {
+            return new Feature[0];
+        }
+
+        Feature[] result = new Feature[featuresStr.length()];
+        for (int i = 0; i < featuresStr.length(); i++) {
+            char c = featuresStr.charAt(i);
+            if (c == 'C') {
+                result[i] = Feature.CHAT;
+            } else if (c == 'L') {
+                result[i] = Feature.LOBBY;
+            } else if (c == 'M') {
+                result[i] = Feature.MASTER;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Sets the required number of players for the game
+     * Protocol: GAME~AMOUNT -> QUEUE or START
+     */
     public void setRequiredPlayers(int count, ClientHandler requestingClient) {
         if (game != null) {
             String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
@@ -70,6 +102,7 @@ public class GameManager {
             return;
         }
 
+        // Validate: must be 2-6 players
         if (count < 2 || count > 6) {
             String errorMsg = new protocol.server.Error(ErrorCode.INVALID_COMMAND).transformToProtocolString();
             requestingClient.sendMessage(errorMsg);
@@ -79,8 +112,15 @@ public class GameManager {
         this.requiredPlayers = count;
         System.out.println("Game will start with " + requiredPlayers + " players");
 
+        // Check if we have enough players
         if (playerNames.size() >= requiredPlayers) {
+            // Start the game immediately
             startGame();
+        } else {
+            // Send QUEUE message to all players (not enough players yet)
+            String queueMsg = new Queue().transformToProtocolString();
+            server.broadcast(queueMsg);
+            System.out.println("Waiting for more players: " + playerNames.size() + "/" + requiredPlayers);
         }
     }
 
@@ -138,17 +178,11 @@ public class GameManager {
             return;
         }
 
-        // Remember whose turn it was before the move
-        Player playerBeforeMove = game.getCurrentPlayer();
-
         try {
             // Convert position to card action
             CardAction action = positionToAction(player, from, to);
 
             if (action != null) {
-                // Check if this is a discard action (ends turn)
-                boolean isDiscard = (action instanceof CardActionHandToDiscardPile);
-
                 // Let the game execute the move
                 List<CardAction> actions = new ArrayList<>();
                 actions.add(action);
@@ -172,16 +206,8 @@ public class GameManager {
                     return;
                 }
 
-                // If turn changed (because of discard), announce new turn
-                Player playerAfterMove = game.getCurrentPlayer();
-                if (playerBeforeMove != playerAfterMove) {
-                    // Send TURN message to all clients
-                    String turnMsg = new Turn(playerAfterMove.getName()).transformToProtocolString();
-                    server.broadcast(turnMsg);
-
-                    // Send stock pile top card for new player
-                    sendStockTopCard(playerAfterMove);
-                }
+                // NOTE: Turn does NOT change automatically anymore
+                // Client must send END command to end the turn
             } else {
                 ClientHandler client = getClientByName(playerName);
                 if (client != null) {
@@ -189,6 +215,63 @@ public class GameManager {
                     client.sendMessage(errorMsg);
                 }
             }
+        } catch (GameException e) {
+            ClientHandler client = getClientByName(playerName);
+            if (client != null) {
+                String errorMsg = new protocol.server.Error(ErrorCode.INVALID_MOVE).transformToProtocolString();
+                client.sendMessage(errorMsg);
+            }
+        }
+    }
+
+    /**
+     * Ends the turn for the specified player
+     * Protocol: END command
+     */
+    public void endTurn(String playerName) {
+        if (game == null) {
+            ClientHandler client = getClientByName(playerName);
+            if (client != null) {
+                String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
+                client.sendMessage(errorMsg);
+            }
+            return;
+        }
+
+        Player player = getPlayerByName(playerName);
+        if (player == null) {
+            return;
+        }
+
+        // Check if it's this player's turn
+        Player currentPlayer = game.getCurrentPlayer();
+        if (currentPlayer != player) {
+            // Not your turn - send error
+            ClientHandler client = getClientByName(playerName);
+            if (client != null) {
+                String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
+                client.sendMessage(errorMsg);
+            }
+            return;
+        }
+
+        try {
+            // End the turn (advances to next player and refills their hand)
+            game.endTurn();
+
+            // Get the new current player
+            Player nextPlayer = game.getCurrentPlayer();
+
+            // Broadcast TURN message to everyone
+            String turnMsg = new Turn(nextPlayer.getName()).transformToProtocolString();
+            server.broadcast(turnMsg);
+
+            // Send HAND to the new current player
+            sendHandToPlayer(nextPlayer.getName());
+
+            // Send stock pile top card for new player
+            sendStockTopCard(nextPlayer);
+
         } catch (GameException e) {
             ClientHandler client = getClientByName(playerName);
             if (client != null) {
@@ -260,13 +343,20 @@ public class GameManager {
 
     private String createTableMessage() {
         // Get building piles info using a loop
+        // Protocol: Show the next expected card number for each building pile
         String[] buildingPileValues = new String[4];
         for (int i = 0; i < 4; i++) {
             BuildingPile pile = game.getBuildingPile(i);
-            if (!pile.isEmpty()) {
-                buildingPileValues[i] = String.valueOf(pile.size());
+            // Next expected card = current size + 1
+            // If pile is empty, next expected is 1
+            // If pile is full (size 12), it will be cleared, so show null (X)
+            if (pile.isFull()) {
+                buildingPileValues[i] = null; // Full pile shows as X
+            } else if (pile.isEmpty()) {
+                buildingPileValues[i] = "1"; // Empty pile expects card 1
             } else {
-                buildingPileValues[i] = null;
+                int nextExpected = pile.size() + 1;
+                buildingPileValues[i] = String.valueOf(nextExpected);
             }
         }
 
@@ -337,7 +427,20 @@ public class GameManager {
         System.out.println("Game ended. Winner: " + winner.getName());
     }
 
+    /**
+     * Removes a player (when they disconnect)
+     * Protocol: Broadcasts ERROR~103 and advances turn if it was current player's turn
+     */
     public void removePlayer(String playerName) {
+        // Check if it was the current player's turn before removing
+        boolean wasCurrentPlayer = false;
+        if (game != null) {
+            Player currentPlayer = game.getCurrentPlayer();
+            if (currentPlayer != null && currentPlayer.getName().equals(playerName)) {
+                wasCurrentPlayer = true;
+            }
+        }
+
         // Find and remove player
         for (int i = 0; i < playerNames.size(); i++) {
             if (playerNames.get(i).equals(playerName)) {
@@ -348,8 +451,26 @@ public class GameManager {
         }
 
         if (game != null) {
+            // Broadcast disconnect error
             String errorMsg = new protocol.server.Error(ErrorCode.PLAYER_DISCONNECTED).transformToProtocolString();
             server.broadcast(errorMsg);
+
+            // If it was current player's turn, advance to next player
+            if (wasCurrentPlayer) {
+                try {
+                    game.endTurn();
+                    Player nextPlayer = game.getCurrentPlayer();
+
+                    // Broadcast whose turn it is now
+                    String turnMsg = new Turn(nextPlayer.getName()).transformToProtocolString();
+                    server.broadcast(turnMsg);
+
+                    // Send hand to new current player
+                    sendHandToPlayer(nextPlayer.getName());
+                } catch (GameException e) {
+                    System.err.println("Error advancing turn after disconnect: " + e.getMessage());
+                }
+            }
         }
     }
 

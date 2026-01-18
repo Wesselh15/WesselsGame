@@ -57,25 +57,78 @@ public class ClientHandler implements Runnable {
         String command = parts[0];
         GameManager gameManager = server.getGameManager();
 
-        // Handle each command type
+        // Handle each command type using switch (cleaner for protocol)
         if (command.equals("HELLO")) {
+            // Protocol: HELLO~NAME~FEATURES
             if (parts.length >= 2) {
                 String playerName = parts[1];
+
+                // Validate player name: 1-30 chars, only [A-Za-z0-9_-]
+                if (!isValidPlayerName(playerName)) {
+                    String errorMsg = new protocol.server.Error(protocol.common.ErrorCode.INVALID_PLAYER_NAME).transformToProtocolString();
+                    sendMessage(errorMsg);
+                    return;
+                }
+
+                // Extract and validate features (optional, default empty)
+                String features = "";
+                if (parts.length >= 3) {
+                    features = parts[2];
+                    if (!isValidFeatures(features)) {
+                        String errorMsg = new protocol.server.Error(protocol.common.ErrorCode.INVALID_COMMAND).transformToProtocolString();
+                        sendMessage(errorMsg);
+                        return;
+                    }
+                }
+
                 this.clientName = playerName;
-                gameManager.addPlayer(playerName, this);
+                gameManager.addPlayer(playerName, features, this);
             }
         } else if (command.equals("GAME")) {
+            // Protocol: GAME~AMOUNT
             if (parts.length >= 2) {
-                int numPlayers = Integer.parseInt(parts[1]);
-                gameManager.setRequiredPlayers(numPlayers, this);
+                try {
+                    int numPlayers = Integer.parseInt(parts[1]);
+                    gameManager.setRequiredPlayers(numPlayers, this);
+                } catch (NumberFormatException e) {
+                    // Invalid number format -> ERROR~204
+                    String errorMsg = new protocol.server.Error(protocol.common.ErrorCode.INVALID_COMMAND).transformToProtocolString();
+                    sendMessage(errorMsg);
+                }
+            } else {
+                // Missing parameter -> ERROR~204
+                String errorMsg = new protocol.server.Error(protocol.common.ErrorCode.INVALID_COMMAND).transformToProtocolString();
+                sendMessage(errorMsg);
             }
         } else if (command.equals("PLAY")) {
-            if (parts.length >= 3 && clientName != null) {
+            // Protocol: PLAY~FROM~TO
+            if (clientName == null) {
+                // Not logged in yet
+                String errorMsg = new protocol.server.Error(protocol.common.ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
+                sendMessage(errorMsg);
+            } else if (parts.length < 3) {
+                // Missing parameters -> ERROR~204 (INVALID_COMMAND)
+                String errorMsg = new protocol.server.Error(protocol.common.ErrorCode.INVALID_COMMAND).transformToProtocolString();
+                sendMessage(errorMsg);
+            } else {
                 Position from = parsePosition(parts[1]);
                 Position to = parsePosition(parts[2]);
-                if (from != null && to != null) {
+
+                if (from == null || to == null) {
+                    // Cannot parse positions -> ERROR~204 (INVALID_COMMAND)
+                    String errorMsg = new protocol.server.Error(protocol.common.ErrorCode.INVALID_COMMAND).transformToProtocolString();
+                    sendMessage(errorMsg);
+                } else {
+                    // Valid syntax, let GameManager handle the move
+                    // GameManager will send ERROR~205 if not your turn
+                    // GameManager will send ERROR~206 if invalid move
                     gameManager.handleMove(clientName, from, to);
                 }
+            }
+        } else if (command.equals("END")) {
+            // Protocol: END command ends the current player's turn
+            if (clientName != null) {
+                gameManager.endTurn(clientName);
             }
         } else if (command.equals("TABLE")) {
             if (clientName != null) {
@@ -86,7 +139,10 @@ public class ClientHandler implements Runnable {
                 gameManager.sendHandToPlayer(clientName);
             }
         } else {
+            // Unknown command - send ERROR~204 (INVALID_COMMAND)
             System.out.println("Unknown command: " + command);
+            String errorMsg = new protocol.server.Error(protocol.common.ErrorCode.INVALID_COMMAND).transformToProtocolString();
+            sendMessage(errorMsg);
         }
     }
 
@@ -139,6 +195,60 @@ public class ClientHandler implements Runnable {
         }
 
         return null;
+    }
+
+    /**
+     * Validates player name according to protocol:
+     * - Length: 1-30 characters
+     * - Characters: only A-Z, a-z, 0-9, underscore, hyphen
+     */
+    private boolean isValidPlayerName(String name) {
+        if (name == null || name.isEmpty() || name.length() > 30) {
+            return false;
+        }
+        // Check if all characters are valid: [A-Za-z0-9_-]
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            boolean isValid = (c >= 'A' && c <= 'Z') ||
+                            (c >= 'a' && c <= 'z') ||
+                            (c >= '0' && c <= '9') ||
+                            c == '_' || c == '-';
+            if (!isValid) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Validates features according to protocol:
+     * - Only letters C, L, M allowed
+     * - Must be in alphabetical order (e.g., CLM is ok, CML is not)
+     */
+    private boolean isValidFeatures(String features) {
+        if (features == null) {
+            return true; // Empty features is ok
+        }
+        if (features.isEmpty()) {
+            return true;
+        }
+
+        // Check if all characters are C, L, or M
+        for (int i = 0; i < features.length(); i++) {
+            char c = features.charAt(i);
+            if (c != 'C' && c != 'L' && c != 'M') {
+                return false;
+            }
+        }
+
+        // Check if alphabetically sorted
+        for (int i = 0; i < features.length() - 1; i++) {
+            if (features.charAt(i) > features.charAt(i + 1)) {
+                return false; // Not in alphabetical order
+            }
+        }
+
+        return true;
     }
 
     public void sendMessage(String message) {
