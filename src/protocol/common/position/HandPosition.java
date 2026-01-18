@@ -12,6 +12,10 @@ public class HandPosition implements Position {
         this.card = card;
     }
 
+    public Card getCard() {
+        return card;
+    }
+
     public String toString(){
         return REP + Command.VALUE_SEPERATOR + (card == null ? "X" : card.toString());
     }

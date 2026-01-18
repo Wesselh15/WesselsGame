@@ -133,63 +133,57 @@ public class AIClient {
     }
 
     private void playTurn() {
-        // Wait a bit to simulate thinking
         try {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            System.err.println("[AI] Thinking interrupted");
         }
 
-        // Try to play a few random cards
+        // FIX: Probeer eerst van stock pile te spelen
+        // Stock pile is altijd beschikbaar en kan niet out-of-sync zijn
+
         int movesPlayed = 0;
-        int maxMoves = random.nextInt(3) + 1; // Play 1-3 moves
+        int maxMoves = random.nextInt(3) + 1; // Probeer 1-3 moves
 
-        for (int i = 0; i < maxMoves && !hand.isEmpty(); i++) {
-            // Pick random card from hand
-            int cardIndex = random.nextInt(hand.size());
-            String card = hand.get(cardIndex);
-
-            // Try random building pile
+        for (int i = 0; i < maxMoves; i++) {
+            // Probeer van STOCK naar BUILDING pile
             int buildingPile = random.nextInt(4);
 
-            String move = "PLAY~H." + card + "~B." + buildingPile;
+            String move = "PLAY~S~B." + buildingPile;
             sendMessage(move);
-            System.out.println("[AI " + playerName + "] Attempting move: " + move);
+            System.out.println("[AI " + playerName + "] Attempting stock move: " + move);
 
             movesPlayed++;
 
-            // Wait a bit between moves
             try {
                 Thread.sleep(500);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                System.err.println("[AI] Move delay interrupted");
             }
         }
 
-        // End turn by discarding
+        // End turn met discard
+        // Check if hand has any cards (safely)
         if (!hand.isEmpty()) {
-            int cardIndex = random.nextInt(hand.size());
-            String card = hand.get(cardIndex);
+            // Just take first card
+            String card = hand.get(0);
             int discardPile = random.nextInt(4);
 
             String discardMove = "PLAY~H." + card + "~D." + discardPile;
             sendMessage(discardMove);
             System.out.println("[AI " + playerName + "] Discarding: " + discardMove);
 
-            // Wait a bit before sending END
             try {
                 Thread.sleep(300);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                System.err.println("[AI] End delay interrupted");
             }
-
-            // Protocol: After discard, must send END command to end turn
-            sendMessage("END");
-            System.out.println("[AI " + playerName + "] Sent END command");
+        } else {
+            System.out.println("[AI " + playerName + "] No cards to discard, just ending");
         }
+
+        sendMessage("END");
+        System.out.println("[AI " + playerName + "] Sent END command");
 
         myTurn = false;
     }

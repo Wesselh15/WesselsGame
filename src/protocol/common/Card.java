@@ -24,6 +24,14 @@ public class Card {
         this.number = null;
     }
 
+    public Integer getNumber() {
+        return number;
+    }
+
+    public boolean isSkipBo() {
+        return number == null;
+    }
+
     public String toString(){
         if(number == null) return "SB";
         else return "" + number;

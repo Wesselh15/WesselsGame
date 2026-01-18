@@ -2,7 +2,7 @@ package protocol.server;
 
 import protocol.Command;
 
-import javax.swing.text.Position;
+import protocol.common.position.Position;
 
 /**
  * Client Command
