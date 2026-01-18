@@ -72,22 +72,6 @@ if (count < 2 || count > 6)  // 2 and 6 are magic numbers
 
 ---
 
-### 🟢 **PRIORITY 4: Use toArray() Method** (NICE TO HAVE)
-**Problem:** Manual loop to convert List to Array in 3 places
-
-**Current Pattern:**
-```java
-String[] names = new String[playerNames.size()];
-for (int i = 0; i < playerNames.size(); i++) {
-    names[i] = playerNames.get(i);
-}
-```
-
-**Task:** Replace with `playerNames.toArray(new String[0])`
-
-**Why:** More compact, less code, uses standard library
-
----
 
 ## 📁 Files to Modify
 
