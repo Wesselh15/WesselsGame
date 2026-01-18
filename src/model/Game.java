@@ -23,6 +23,10 @@ public class Game {
 
     private int currentPlayerIndex;
 
+    // Multi-round scoring (500 punten om te winnen)
+    private Map<Player, Integer> totalScores;
+    private int roundNumber;
+
     public Game(List<Player> players){
         // Generate and Shuffle cards
         drawPile = CardGenerator.generateCards();
@@ -35,6 +39,13 @@ public class Game {
         this.stockPiles = new HashMap<>();
         this.hand = new HashMap<>();
         this.discardPiles = new HashMap<>();
+
+        // Initialiseer scoring systeem (0 punten voor alle spelers)
+        this.totalScores = new HashMap<>();
+        for (Player p : players) {
+            totalScores.put(p, 0);
+        }
+        this.roundNumber = 1;
 
         // Generates 4 building piles (shared by all players)
         this.buildingPiles = new ArrayList<>();
@@ -176,5 +187,152 @@ public class Game {
             }
         }
         return null;
+    }
+
+    // ========== SCORING SYSTEEM (Multi-round functionaliteit) ==========
+
+    /**
+     * Berekent de score voor de winnaar van een ronde
+     * Scoring regels:
+     * - Winnaar krijgt 25 punten (basis)
+     * - Plus 5 punten voor elke kaart in de stock pile van tegenstanders
+     *
+     * @param winner De speler die deze ronde heeft gewonnen
+     * @return Het aantal punten dat de winnaar verdient
+     */
+    public int calculateRoundScore(Player winner) {
+        int score = 25;  // Basis punten voor winnen
+
+        // Tel kaarten in stock piles van tegenstanders
+        for (Player opponent : players) {
+            if (!opponent.equals(winner)) {
+                StockPile opponentStock = stockPiles.get(opponent);
+                if (opponentStock != null) {
+                    score += opponentStock.size() * 5;
+                }
+            }
+        }
+
+        return score;
+    }
+
+    /**
+     * Voegt punten toe aan een speler's totale score
+     *
+     * @param player De speler
+     * @param points Aantal punten om toe te voegen
+     */
+    public void addScore(Player player, int points) {
+        int currentScore = totalScores.getOrDefault(player, 0);
+        totalScores.put(player, currentScore + points);
+    }
+
+    /**
+     * Haalt de huidige totale score op van een speler
+     *
+     * @param player De speler
+     * @return De totale score van de speler
+     */
+    public int getScore(Player player) {
+        return totalScores.getOrDefault(player, 0);
+    }
+
+    /**
+     * Controleert of er een overall winnaar is (>= 500 punten)
+     *
+     * @return De overall winnaar, of null als niemand 500 punten heeft
+     */
+    public Player getOverallWinner() {
+        for (Player player : players) {
+            if (totalScores.getOrDefault(player, 0) >= 500) {
+                return player;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Geeft het huidige ronde nummer
+     *
+     * @return Het ronde nummer (start bij 1)
+     */
+    public int getRoundNumber() {
+        return roundNumber;
+    }
+
+    /**
+     * Geeft een kopie van alle scores (voor protocol)
+     *
+     * @return Map met alle spelers en hun scores
+     */
+    public Map<Player, Integer> getAllScores() {
+        return new HashMap<>(totalScores);
+    }
+
+    /**
+     * Sluit een ronde af en berekent de scores
+     * Deze methode wordt aangeroepen als een speler zijn stock pile leeg heeft
+     *
+     * @param winner De speler die deze ronde heeft gewonnen
+     * @return RoundResult object met alle ronde informatie
+     */
+    public RoundResult finishRound(Player winner) {
+        // Bereken score voor de winnaar
+        int score = calculateRoundScore(winner);
+        addScore(winner, score);
+
+        // Check of er een overall winnaar is (>= 500 punten)
+        Player overallWinner = getOverallWinner();
+        boolean gameOver = (overallWinner != null);
+
+        return new RoundResult(winner, score, getAllScores(), gameOver, overallWinner);
+    }
+
+    /**
+     * Start een nieuwe ronde (maar behoudt de scores!)
+     * - Reset draw pile en building piles
+     * - Deel nieuwe stock piles uit
+     * - Maak hands leeg
+     * - Reset discard piles
+     * - Kies random nieuwe eerste speler
+     */
+    public void startNewRound() {
+        // Verhoog ronde nummer
+        roundNumber++;
+
+        // Genereer en schud nieuwe kaarten
+        drawPile = CardGenerator.generateCards();
+        Collections.shuffle(drawPile);
+
+        // Reset building piles
+        buildingPiles.clear();
+        for (int i = 0; i < NUM_BUILDING_PILES; i++) {
+            buildingPiles.add(new BuildingPile());
+        }
+
+        // Reset stock piles, hands en discard piles voor alle spelers
+        int cardsToHandout = players.size() <= 4 ? STOCK_SIZE_SMALL_GAME : STOCK_SIZE_LARGE_GAME;
+        for (Player player : players) {
+            // Nieuwe stock pile met verse kaarten
+            List<Card> handOut = new ArrayList<>(drawPile.subList(0, cardsToHandout));
+            stockPiles.put(player, new StockPile(handOut));
+            drawPile.removeAll(handOut);
+
+            // Maak hand leeg
+            hand.get(player).clear();
+
+            // Reset alle 4 discard piles
+            List<DiscardPile> playerDiscardPiles = discardPiles.get(player);
+            for (DiscardPile dp : playerDiscardPiles) {
+                dp.clear();
+            }
+        }
+
+        // Kies random nieuwe eerste speler
+        Random r = new Random();
+        currentPlayerIndex = r.nextInt(players.size());
+        handCards(players.get(currentPlayerIndex));
+
+        System.out.println("Ronde " + roundNumber + " gestart!");
     }
 }
