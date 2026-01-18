@@ -28,4 +28,11 @@ public class DiscardPile {
     public boolean isEmpty(){
         return cards.isEmpty();
     }
+
+    /**
+     * Wist alle kaarten uit de discard pile (gebruikt voor nieuwe ronde)
+     */
+    public void clear() {
+        cards.clear();
+    }
 }
