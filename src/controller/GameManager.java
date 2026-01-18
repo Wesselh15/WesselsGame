@@ -67,8 +67,15 @@ public class GameManager {
 
         System.out.println("Player added: " + playerName + " (" + playerNames.size() + "/" + requiredPlayers + ")");
 
-        // NOTE: Game does NOT auto-start anymore
-        // Client must send GAME~AMOUNT command
+        // Check if we now have enough players to start the game
+        if (requiredPlayers > 0 && playerNames.size() >= requiredPlayers) {
+            System.out.println("Enough players joined! Starting game automatically...");
+            startGame();
+        } else if (requiredPlayers > 0) {
+            System.out.println("Waiting for " + (requiredPlayers - playerNames.size()) + " more player(s)");
+        } else {
+            System.out.println("Waiting for GAME~AMOUNT command to set required players");
+        }
     }
 
     /**
@@ -99,6 +106,14 @@ public class GameManager {
      */
     public void setRequiredPlayers(int count, ClientHandler requestingClient) {
         if (game != null) {
+            String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
+            requestingClient.sendMessage(errorMsg);
+            return;
+        }
+
+        // Check if already set (prevent duplicate GAME commands)
+        if (requiredPlayers != -1) {
+            System.out.println("Required players already set to " + requiredPlayers);
             String errorMsg = new protocol.server.Error(ErrorCode.COMMAND_NOT_ALLOWED).transformToProtocolString();
             requestingClient.sendMessage(errorMsg);
             return;
@@ -395,19 +410,10 @@ public class GameManager {
 
     /**
      * Removes a player (when they disconnect)
-     * Protocol: Broadcasts ERROR~103 and advances turn if it was current player's turn
+     * Protocol: Broadcasts ERROR~103 and ends the game
      */
     public void removePlayer(String playerName) {
-        // Check if it was the current player's turn before removing
-        boolean wasCurrentPlayer = false;
-        if (game != null) {
-            Player currentPlayer = game.getCurrentPlayer();
-            if (currentPlayer != null && currentPlayer.getName().equals(playerName)) {
-                wasCurrentPlayer = true;
-            }
-        }
-
-        // Find and remove player
+        // Find and remove player from lists
         for (int i = 0; i < playerNames.size(); i++) {
             if (playerNames.get(i).equals(playerName)) {
                 playerNames.remove(i);
@@ -416,27 +422,14 @@ public class GameManager {
             }
         }
 
+        // End game when any player disconnects (prevents race conditions)
         if (game != null) {
-            // Broadcast disconnect error
             String errorMsg = new protocol.server.Error(ErrorCode.PLAYER_DISCONNECTED).transformToProtocolString();
             server.broadcast(errorMsg);
 
-            // If it was current player's turn, advance to next player
-            if (wasCurrentPlayer) {
-                try {
-                    game.endTurn();
-                    Player nextPlayer = game.getCurrentPlayer();
-
-                    // Broadcast whose turn it is now
-                    String turnMsg = new Turn(nextPlayer.getName()).transformToProtocolString();
-                    server.broadcast(turnMsg);
-
-                    // Send hand to new current player
-                    sendHandToPlayer(nextPlayer.getName());
-                } catch (GameException e) {
-                    System.err.println("Error advancing turn after disconnect: " + e.getMessage());
-                }
-            }
+            System.out.println("Game ended due to player disconnect: " + playerName);
+            game = null;  // End the game
+            requiredPlayers = -1;  // Reset for new game
         }
     }
 

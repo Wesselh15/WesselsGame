@@ -1,5 +1,6 @@
 package model;
 
+import static model.GameConstants.*;
 
 public class CardActionDiscardPileToBuildingPile implements CardAction {
     private int discardPileIndex;
@@ -24,10 +25,10 @@ public class CardActionDiscardPileToBuildingPile implements CardAction {
             return false;
         }
 
-        if (discardPileIndex < 0 || discardPileIndex >= 4) {
+        if (discardPileIndex < 0 || discardPileIndex >= NUM_DISCARD_PILES) {
             return false;
         }
-        if (buildingPileIndex < 0 || buildingPileIndex >= 4) {
+        if (buildingPileIndex < 0 || buildingPileIndex >= NUM_BUILDING_PILES) {
             return false;
         }
         model.Card topCard = discardPile.topCard();

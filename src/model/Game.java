@@ -13,7 +13,6 @@ import static model.GameConstants.*;
 public class Game {
 
     private List<Player> players;
-    private Map<Player, Integer> scores;
 
     private Map<Player, List<DiscardPile>> discardPiles;
     private Map<Player, StockPile> stockPiles;
@@ -23,7 +22,6 @@ public class Game {
     private List<BuildingPile> buildingPiles;
 
     private int currentPlayerIndex;
-    private int round;
 
     public Game(List<Player> players){
         // Generate and Shuffle cards
@@ -37,7 +35,6 @@ public class Game {
         this.stockPiles = new HashMap<>();
         this.hand = new HashMap<>();
         this.discardPiles = new HashMap<>();
-        this.scores = new HashMap<>();
 
         // Generates 4 building piles (shared by all players)
         this.buildingPiles = new ArrayList<>();
@@ -46,7 +43,8 @@ public class Game {
         }
 
         // Assign cards to players
-        int cardsToHandout = players.size() <= MAX_PLAYERS / 2 ? STOCK_SIZE_SMALL_GAME : STOCK_SIZE_LARGE_GAME;
+        // 2-4 players: 30 cards, 5-6 players: 20 cards
+        int cardsToHandout = players.size() <= 4 ? STOCK_SIZE_SMALL_GAME : STOCK_SIZE_LARGE_GAME;
         for (Player player : players){
             List<Card> handOut = new ArrayList<>(drawPile.subList(0, cardsToHandout));
             stockPiles.put(player, new StockPile(handOut));
@@ -65,9 +63,6 @@ public class Game {
         Random r = new Random();
         currentPlayerIndex = r.nextInt(players.size());
         handCards(players.get(currentPlayerIndex));
-
-        // set to the first round
-        this.round = 0;
     }
 
     public void handCards(Player player) {
@@ -156,14 +151,6 @@ public class Game {
 
     public List<Player> getPlayers() {
         return players;
-    }
-
-    public int getRound() {
-        return round;
-    }
-
-    public Map<Player, Integer> getScores() {
-        return scores;
     }
 
     // Game logic methods
