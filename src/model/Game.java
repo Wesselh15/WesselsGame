@@ -115,15 +115,19 @@ public class Game {
             }
         }
 
-        // Checks if last action was to discard pile this ends the turn
-        if (!cardActions.isEmpty()) {
-            CardAction lastAction = cardActions.get(cardActions.size() - 1);
-            if (lastAction instanceof model.CardActionHandToDiscardPile) {
-                // Move to the next player
-                currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
-                handCards(players.get(currentPlayerIndex));
-            }
-        }
+        // NOTE: Discard no longer automatically ends the turn
+        // Client must send END command explicitly to end the turn
+    }
+
+    /**
+     * Ends the current player's turn and advances to the next player
+     * Called when END command is received from the client
+     */
+    public void endTurn() throws GameException {
+        // Move to the next player
+        currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
+        // Refill hand for the new current player
+        handCards(players.get(currentPlayerIndex));
     }
 
 
