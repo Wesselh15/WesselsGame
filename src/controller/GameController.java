@@ -74,6 +74,12 @@ public class GameController {
                 // Check if player won this ROUND
                 if (game.hasPlayerWon(player)) {
                     handleRoundWin(player);
+                    return;  // Round ended, don't continue
+                }
+
+                // If this was a discard action, automatically end the turn
+                if (action instanceof CardActionHandToDiscardPile) {
+                    endTurn(playerName);
                 }
             } else {
                 sendErrorToPlayer(playerName, ErrorCode.INVALID_MOVE);
