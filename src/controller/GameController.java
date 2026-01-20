@@ -74,6 +74,12 @@ public class GameController {
                 // Check if player won this ROUND
                 if (game.hasPlayerWon(player)) {
                     handleRoundWin(player);
+                    return;  // Round ended, don't continue
+                }
+
+                // If this was a discard action, automatically end the turn
+                if (action instanceof CardActionHandToDiscardPile) {
+                    endTurn(playerName);
                 }
             } else {
                 sendErrorToPlayer(playerName, ErrorCode.INVALID_MOVE);
@@ -284,10 +290,10 @@ public class GameController {
             if (pile.isFull()) {
                 buildingPileValues[i] = null;  // Full pile = X (no more cards)
             } else if (pile.isEmpty()) {
-                buildingPileValues[i] = "1";   // Empty pile expects card 1
+                buildingPileValues[i] = null;  // Empty pile = no card yet
             } else {
-                int nextExpected = pile.size() + 1;
-                buildingPileValues[i] = String.valueOf(nextExpected);
+                int topValue = pile.size();  // Current top card value
+                buildingPileValues[i] = String.valueOf(topValue);
             }
         }
 
