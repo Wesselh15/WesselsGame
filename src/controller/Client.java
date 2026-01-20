@@ -101,37 +101,8 @@ public class Client {
 
             if (!input.isEmpty()) {
                 sendMessage(input);
-
-                // Protocol: If user played a discard move (PLAY to D.*), automatically send END
-                if (isDiscardMove(input)) {
-                    // Wait a tiny bit for server to process the discard
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        System.err.println("Sleep interrupted during discard wait");
-                    }
-                    sendMessage("END");
-                    System.out.println(">>> Automatically sent END after discard");
-                }
             }
         }
-    }
-
-    /**
-     * Checks if a command is a discard move (PLAY to D.*)
-     */
-    private boolean isDiscardMove(String input) {
-        if (!input.startsWith("PLAY~")) {
-            return false;
-        }
-        String[] parts = input.split("~");
-        if (parts.length >= 3) {
-            String to = parts[2];
-            // Check if destination is a discard pile (D.0, D.1, D.2, D.3)
-            return to.startsWith("D.");
-        }
-        return false;
     }
 
     public void sendMessage(String message) {
